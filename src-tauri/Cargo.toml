@@ -1,0 +1,41 @@
+[package]
+name = "cardamoi"
+version = "0.1.0"
+description = "Search, download and watch a local media library"
+authors = ["Laith Alwazani"]
+edition = "2024"
+
+[lib]
+name = "cardamoi_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+librqbit = "9.0.1"
+rusqlite = { version = "0.41.0", features = ["bundled"] }
+reqwest = { version = "0.13.5", features = ["json", "query"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "io-util", "process", "time", "sync"] }
+anyhow = "1.0.104"
+dirs = "7.0.0"
+futures = "0.3.34"
+roxmltree = "0.21.2"
+uuid = { version = "1.29.0", features = ["v4"] }
+regex = "1.13.1"
+async-trait = "0.1.86"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query"] }
+tokio-util = { version = "0.7", features = ["io"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+trash = "5"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
