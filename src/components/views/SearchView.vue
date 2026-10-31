@@ -4,12 +4,14 @@ import { api, type CatalogTitle } from "../../api";
 import { arrowNav } from "../../keys";
 import { go } from "../../nav";
 import { entries, selection, shelf } from "../../store";
+import { isTmdbKeyError, noteTmdbError } from "../../tmdb";
 import ShelfTile from "../ShelfTile.vue";
 import ErrorNote from "../ui/ErrorNote.vue";
 import PosterTile from "../ui/PosterTile.vue";
 import PageHeader from "../ui/PageHeader.vue";
 import SectionHeader from "../ui/SectionHeader.vue";
 import Loader from "../ui/Loader.vue";
+import TmdbPrompt from "../ui/TmdbPrompt.vue";
 
 const props = defineProps<{ query: string }>();
 
@@ -32,6 +34,7 @@ watch(
       const found = await api.catalogSearch(text.trim());
       if (ticket === latest) titles.value = found;
     } catch (e) {
+      noteTmdbError(e);
       if (ticket === latest) error.value = e;
     } finally {
       if (ticket === latest) searching.value = false;
@@ -85,6 +88,7 @@ function open(t: CatalogTitle) {
     </section>
 
     <Loader v-if="searching" :size="55" text="Searching the catalog" class="py-55" />
+    <TmdbPrompt v-else-if="isTmdbKeyError(error)" feature="search" />
     <ErrorNote v-else-if="error" :error="error" class="max-w-xl" />
     <div v-else-if="!titles.length" class="py-8">
       <p class="text-heading">No results</p>

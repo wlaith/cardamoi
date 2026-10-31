@@ -3,8 +3,6 @@ use std::path::Path;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 
-use crate::flaresolverr::FlareSolverrConfig;
-
 #[derive(Debug, Clone, Serialize)]
 pub struct Item {
     pub id: i64,
@@ -80,11 +78,6 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
             url      TEXT NOT NULL,
             api_key  TEXT NOT NULL DEFAULT '',
             enabled  INTEGER NOT NULL DEFAULT 1
-        );
-        CREATE TABLE IF NOT EXISTS flaresolverr (
-            id       INTEGER PRIMARY KEY CHECK (id = 1),
-            enabled  INTEGER NOT NULL DEFAULT 0,
-            url      TEXT NOT NULL DEFAULT 'http://localhost:8191'
         );
         CREATE TABLE IF NOT EXISTS videos (
             item_id     INTEGER NOT NULL,
@@ -169,10 +162,7 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
              DROP TABLE playback_old;",
         )?;
     }
-    conn.execute(
-        "INSERT OR IGNORE INTO flaresolverr (id, enabled, url) VALUES (1, 0, 'http://localhost:8191')",
-        [],
-    )?;
+    conn.execute("DROP TABLE IF EXISTS flaresolverr", [])?;
     Ok(conn)
 }
 
@@ -535,25 +525,6 @@ pub fn delete_source(conn: &Connection, id: i64) -> rusqlite::Result<()> {
     Ok(())
 }
 
-pub fn get_flaresolverr_config(conn: &Connection) -> rusqlite::Result<FlareSolverrConfig> {
-    let mut stmt = conn.prepare("SELECT enabled, url FROM flaresolverr WHERE id = 1")?;
-    let config = stmt.query_row([], |r| {
-        Ok(FlareSolverrConfig {
-            enabled: r.get::<_, i64>(0)? != 0,
-            url: r.get(1)?,
-        })
-    })?;
-    Ok(config)
-}
-
-pub fn set_flaresolverr_config(conn: &Connection, config: &FlareSolverrConfig) -> rusqlite::Result<()> {
-    conn.execute(
-        "UPDATE flaresolverr SET enabled = ?1, url = ?2 WHERE id = 1",
-        params![config.enabled as i64, config.url],
-    )?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -751,29 +722,4 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
     }
 
-    #[test]
-    fn flaresolverr_config_default() {
-        let path = std::env::temp_dir().join(format!("cardamoi-db-fs-default-{}.sqlite", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        let conn = open(&path).unwrap();
-        let config = get_flaresolverr_config(&conn).unwrap();
-        assert!(!config.enabled);
-        assert_eq!(config.url, "http://localhost:8191");
-        std::fs::remove_file(&path).unwrap();
-    }
-
-    #[test]
-    fn flaresolverr_config_persists() {
-        let path = std::env::temp_dir().join(format!("cardamoi-db-fs-persists-{}.sqlite", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        let conn = open(&path).unwrap();
-        set_flaresolverr_config(&conn, &FlareSolverrConfig {
-            enabled: true,
-            url: "http://custom:8191".to_owned(),
-        }).unwrap();
-        let config = get_flaresolverr_config(&conn).unwrap();
-        assert!(config.enabled);
-        assert_eq!(config.url, "http://custom:8191");
-        std::fs::remove_file(&path).unwrap();
-    }
 }

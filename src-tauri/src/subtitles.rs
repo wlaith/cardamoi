@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
-use crate::{db, flaresolverr::FlareSolverrClient, release};
+use crate::{db, release};
 
 const OPENSUBTITLES: &str = "api.opensubtitles.com";
 const USER_AGENT: &str = concat!("cardamoi v", env!("CARGO_PKG_VERSION"));
@@ -167,7 +167,7 @@ impl Subtitles {
         *self.login.lock().await = None;
     }
 
-    pub async fn sign_in(&self, http: &FlareSolverrClient, s: &Settings) -> anyhow::Result<Option<(String, String)>> {
+    pub async fn sign_in(&self, http: &reqwest::Client, s: &Settings) -> anyhow::Result<Option<(String, String)>> {
         let Some((user, password)) = s.opensubtitles_login() else { return Ok(None) };
         let mut cached = self.login.lock().await;
         if let Some(login) = &*cached {
@@ -200,7 +200,7 @@ impl Subtitles {
         Ok(Some((reply.token, host)))
     }
 
-    pub async fn search(&self, http: &FlareSolverrClient, s: &Settings, q: &Query) -> (Vec<Ranked>, Vec<String>) {
+    pub async fn search(&self, http: &reqwest::Client, s: &Settings, q: &Query) -> (Vec<Ranked>, Vec<String>) {
         let (os, subdl) = futures::join!(
             async { (!s.opensubtitles_key.is_empty()).then_some(search_opensubtitles(http, s, q).await) },
             async { (!s.subdl_key.is_empty()).then_some(search_subdl(http, s, q).await) },
@@ -219,7 +219,7 @@ impl Subtitles {
 
     pub async fn download(
         &self,
-        http: &FlareSolverrClient,
+        http: &reqwest::Client,
         s: &Settings,
         found: &Found,
         season: Option<u32>,
@@ -234,7 +234,7 @@ impl Subtitles {
 
     async fn download_opensubtitles(
         &self,
-        http: &FlareSolverrClient,
+        http: &reqwest::Client,
         s: &Settings,
         found: &Found,
     ) -> anyhow::Result<(Vec<u8>, String)> {
@@ -283,7 +283,7 @@ impl Subtitles {
     }
 }
 
-async fn search_opensubtitles(http: &FlareSolverrClient, s: &Settings, q: &Query) -> anyhow::Result<Vec<Found>> {
+async fn search_opensubtitles(http: &reqwest::Client, s: &Settings, q: &Query) -> anyhow::Result<Vec<Found>> {
     let mut languages: Vec<String> = q.languages.iter().map(|l| l.to_lowercase()).collect();
     languages.sort();
     let mut params: Vec<(&str, String)> = vec![("ai_translated", "exclude".into()), ("languages", languages.join(","))];
@@ -341,7 +341,7 @@ fn opensubtitles_result(a: &Value) -> Option<Found> {
     })
 }
 
-async fn search_subdl(http: &FlareSolverrClient, s: &Settings, q: &Query) -> anyhow::Result<Vec<Found>> {
+async fn search_subdl(http: &reqwest::Client, s: &Settings, q: &Query) -> anyhow::Result<Vec<Found>> {
     let languages: Vec<String> = q.languages.iter().map(|l| l.to_uppercase()).collect();
     let mut params: Vec<(&str, String)> = vec![
         ("api_key", s.subdl_key.clone()),
@@ -410,7 +410,7 @@ fn subdl_result(item: &Value, q: &Query) -> Option<Found> {
 }
 
 async fn download_subdl(
-    http: &FlareSolverrClient,
+    http: &reqwest::Client,
     found: &Found,
     season: Option<u32>,
     episode: Option<u32>,

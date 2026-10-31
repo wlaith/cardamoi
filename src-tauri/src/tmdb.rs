@@ -1,14 +1,47 @@
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-
-use crate::flaresolverr::FlareSolverrClient;
 
 const API: &str = "https://api.themoviedb.org/3";
 const IMAGES: &str = "https://image.tmdb.org/t/p";
 
-fn token() -> anyhow::Result<&'static str> {
-    option_env!("TMDB_TOKEN").ok_or_else(|| anyhow::anyhow!("this build has no TMDB token; add it to src-tauri/.env"))
+#[derive(Debug, Clone, PartialEq)]
+pub enum Auth {
+    Bearer(String),
+    ApiKey(String),
 }
+
+impl Auth {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Auth::Bearer(_) => "token",
+            Auth::ApiKey(_) => "key",
+        }
+    }
+}
+
+pub fn parse_key(text: &str) -> Option<Auth> {
+    let key = text.trim().trim_matches(|c| c == '"' || c == '\'' || c == '`').trim();
+    let jwt = key.starts_with("eyJ")
+        && key.split('.').count() == 3
+        && key.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'));
+    if jwt {
+        Some(Auth::Bearer(key.to_owned()))
+    } else if key.len() == 32 && key.chars().all(|c| c.is_ascii_hexdigit()) {
+        Some(Auth::ApiKey(key.to_ascii_lowercase()))
+    } else {
+        None
+    }
+}
+
+#[derive(Debug)]
+pub struct Rejected;
+
+impl std::fmt::Display for Rejected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("tmdb:rejected")
+    }
+}
+
+impl std::error::Error for Rejected {}
 
 fn image(size: &str, path: Option<String>) -> Option<String> {
     path.map(|p| format!("{IMAGES}/{size}{p}"))
@@ -143,22 +176,27 @@ impl RawTitle {
 }
 
 pub struct Tmdb {
-    pub http: Arc<FlareSolverrClient>,
+    pub http: reqwest::Client,
+    pub auth: Auth,
 }
 
 impl Tmdb {
     async fn get<T: serde::de::DeserializeOwned>(&self, path: &str, query: &[(&str, &str)]) -> anyhow::Result<T> {
-        let resp = self
-            .http
-            .get(&format!("{API}{path}"))
-            .bearer_auth(token()?)
-            .query(query)
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        Ok(resp)
+        let request = self.http.get(&format!("{API}{path}")).query(query);
+        let request = match &self.auth {
+            Auth::Bearer(token) => request.bearer_auth(token),
+            Auth::ApiKey(key) => request.query(&[("api_key", key)]),
+        };
+        let resp = request.send().await?;
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(Rejected.into());
+        }
+        Ok(resp.error_for_status()?.json().await?)
+    }
+
+    pub async fn validate(&self) -> anyhow::Result<()> {
+        let _: serde_json::Value = self.get("/authentication", &[]).await?;
+        Ok(())
     }
 
     pub async fn search(&self, text: &str) -> anyhow::Result<Vec<Title>> {
@@ -232,12 +270,25 @@ impl Tmdb {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::flaresolverr::FlareSolverrConfig;
+
+    #[test]
+    fn reads_both_key_formats() {
+        let token = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJhYmMifQ.c2lnbmF0dXJl_-";
+        assert_eq!(parse_key(token), Some(Auth::Bearer(token.into())));
+        assert_eq!(parse_key(&format!("  \"{token}\"\n")), Some(Auth::Bearer(token.into())));
+        let key = "0123456789ABCDEF0123456789abcdef";
+        assert_eq!(parse_key(key), Some(Auth::ApiKey(key.to_ascii_lowercase())));
+        assert_eq!(parse_key(""), None);
+        assert_eq!(parse_key("not a key"), None);
+        assert_eq!(parse_key("eyJ only one part"), None);
+        assert_eq!(parse_key("0123456789abcdef"), None);
+    }
 
     #[tokio::test]
     #[ignore]
     async fn live_lookup() {
-        let tmdb = Tmdb { http: Arc::new(FlareSolverrClient::new(FlareSolverrConfig::default()).unwrap()) };
+        let key = std::env::var("TMDB_KEY").expect("set TMDB_KEY to run this");
+        let tmdb = Tmdb { http: reqwest::Client::new(), auth: parse_key(&key).unwrap() };
         let results = tmdb.search("The Matrix").await.unwrap();
         let matrix = results.iter().find(|t| t.kind == Kind::Movie && t.year == Some(1999)).unwrap();
         assert!(matrix.poster.is_some());

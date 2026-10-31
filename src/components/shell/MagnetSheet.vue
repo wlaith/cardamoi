@@ -3,6 +3,8 @@ import { computed, nextTick, ref, watch } from "vue";
 import { api, episodeLabel, magnetName, type CatalogTitle, type NameLookup } from "../../api";
 import { addMagnet } from "../../commands";
 import { arrowNav } from "../../keys";
+import { go } from "../../nav";
+import { tmdbBlocked } from "../../tmdb";
 import { closeSheet } from "../../ui";
 
 const props = defineProps<{ link: string }>();
@@ -35,8 +37,8 @@ watch(
     lookup.value = null;
     chosen.value = null;
     picking.value = false;
-    looking.value = !!text;
-    if (!text) return;
+    looking.value = !!text && !tmdbBlocked.value;
+    if (!text || tmdbBlocked.value) return;
     lookupTimer = window.setTimeout(async () => {
       // A failed lookup only means no cover yet; the download still gets matched once it starts.
       const found = await api.matchName(text).catch(() => null);
@@ -166,6 +168,11 @@ async function add() {
           <p class="text-ink-2">{{ details }}</p>
           <p v-if="chosen.overview" class="match-overview mt-2">{{ chosen.overview }}</p>
           <button type="button" class="btn btn-ghost mt-1 -ml-2" @click="startPicking">Not this?</button>
+        </div>
+        <div v-else-if="tmdbBlocked" class="min-w-0">
+          <p>Matching is off without a TMDB key.</p>
+          <p class="text-ink-2">It still downloads, and gets matched once a key is added.</p>
+          <button type="button" class="btn btn-ghost mt-1 -ml-2" @click="closeSheet(); go({ name: 'setup' })">Add a TMDB key</button>
         </div>
         <div v-else class="min-w-0">
           <p>No match on TMDB.</p>

@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 import type { CatalogTitle } from "./api";
 
-export type PreferencesPane = "general" | "subtitles" | "sources";
+export type PreferencesPane = "general" | "tmdb" | "subtitles" | "sources";
 
 export type Route =
   | { name: "upnext" }
@@ -12,9 +12,12 @@ export type Route =
   | { name: "title"; title: CatalogTitle }
   | { name: "localShow"; key: string }
   | { name: "preferences"; pane: PreferencesPane }
-  | { name: "help"; topic?: string };
+  | { name: "help"; topic?: string }
+  | { name: "setup"; step?: SetupStep };
 
-export type Section = "upnext" | "films" | "shows" | "downloads" | "search" | "preferences" | "help";
+export type SetupStep = "welcome" | "get" | "paste" | "done";
+
+export type Section = "upnext" | "films" | "shows" | "downloads" | "search" | "preferences" | "help" | "setup";
 
 interface Visit {
   route: Route;
