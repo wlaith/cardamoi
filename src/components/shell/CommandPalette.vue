@@ -4,6 +4,7 @@ import { checkFolder, openFilm, openFolder, openShow } from "../../commands";
 import { filmVideo, showKey, type Shelf } from "../../library";
 import { go } from "../../nav";
 import { homeMode, shelf, theme } from "../../store";
+import { tmdbReady } from "../../tmdb";
 import { filmLine, showLine } from "../../status";
 import { palette, sheet } from "../../ui";
 import Icon from "../ui/Icon.vue";
@@ -87,6 +88,9 @@ const commands = computed<Row[]>(() => {
         icon: "settings",
         run: () => (theme.value = t),
       })),
+    tmdbReady.value
+      ? { id: "tmdb", label: "TMDB key", icon: "key", run: () => go({ name: "preferences", pane: "tmdb" }) }
+      : { id: "tmdb", label: "Set up TMDB", icon: "key", run: () => go({ name: "setup" }) },
     { id: "prefs", label: "Preferences", icon: "settings", keys: "⌘,", run: () => go({ name: "preferences", pane: "general" }) },
     { id: "help", label: "cardamoi Help", icon: "help", keys: "⇧⌘/", run: () => go({ name: "help" }) },
   ];

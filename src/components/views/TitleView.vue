@@ -6,6 +6,7 @@ import { episodeKey, groupLibrary, nextEpisode, type LocalEpisode } from "../../
 import { go } from "../../nav";
 import { entries, selection } from "../../store";
 import { canRetry, filmLine, resolvingText } from "../../status";
+import { isTmdbKeyError, noteTmdbError } from "../../tmdb";
 import { openMenuBelow } from "../../ui";
 import EpisodeDetails from "../EpisodeDetails.vue";
 import EpisodeTable, { type EpisodeRowData } from "../EpisodeTable.vue";
@@ -15,6 +16,7 @@ import Icon from "../ui/Icon.vue";
 import ProgressBar from "../ui/ProgressBar.vue";
 import SectionHeader from "../ui/SectionHeader.vue";
 import TabList from "../ui/TabList.vue";
+import TmdbPrompt from "../ui/TmdbPrompt.vue";
 import Loader from "../ui/Loader.vue";
 import Spinner from "../ui/Spinner.vue";
 
@@ -78,6 +80,7 @@ watch(
       details.value = await api.titleDetails(props.title.kind, props.title.id);
       season.value = next.value?.video.season ?? details.value.seasons.find((s) => s.number > 0)?.number ?? details.value.seasons[0]?.number ?? null;
     } catch (e) {
+      noteTmdbError(e);
       loadError.value = e;
     }
   },
@@ -95,6 +98,7 @@ watch(season, async (number) => {
     episodes.value = await api.seasonEpisodes(props.title.id, number);
     if (next.value && next.value.video.season === number) pick(String(next.value.video.episode));
   } catch (e) {
+    noteTmdbError(e);
     episodesError.value = e;
   } finally {
     loadingEpisodes.value = false;
@@ -173,7 +177,8 @@ watch(
             <span class="text-ink-2">{{ meta }}</span>
           </div>
           <p v-if="shown.overview" class="max-w-[80ch] text-ink-2 selectable">{{ shown.overview }}</p>
-          <ErrorNote v-if="loadError" :error="loadError" class="max-w-xl" />
+          <TmdbPrompt v-if="isTmdbKeyError(loadError)" feature="this page's details" compact />
+          <ErrorNote v-else-if="loadError" :error="loadError" class="max-w-xl" />
 
           <div v-if="title.kind === 'tv'" class="flex flex-wrap items-center gap-4 pt-2">
             <button v-if="next" class="btn btn-primary btn-lg" @click="playNext">
@@ -275,7 +280,8 @@ watch(
         <ReleaseList :title="title" :season="season" :episode="null" />
       </div>
 
-      <ErrorNote v-if="episodesError" :error="episodesError" />
+      <TmdbPrompt v-if="isTmdbKeyError(episodesError)" feature="the episode list" compact />
+      <ErrorNote v-else-if="episodesError" :error="episodesError" />
       <Loader v-else-if="loadingEpisodes" inline text="Loading episodes" class="py-21" />
       <EpisodeTable v-else-if="rows.length" :rows="rows" :selected="openRow" @select="pick">
         <template #detail="{ row }">
