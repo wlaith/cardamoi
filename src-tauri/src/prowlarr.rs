@@ -56,6 +56,28 @@ fn ensure_config(data_dir: &Path) -> anyhow::Result<String> {
     Ok(key)
 }
 
+fn kill_leftovers(binary: &Path) {
+    let pattern = binary.to_string_lossy();
+    let alive = || {
+        Command::new("pgrep")
+            .args(["-f", &pattern])
+            .stdout(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    };
+    if !alive() {
+        return;
+    }
+    let _ = Command::new("pkill").args(["-f", &pattern]).status();
+    for _ in 0..30 {
+        if !alive() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let _ = Command::new("pkill").args(["-9", "-f", &pattern]).status();
+}
+
 impl Prowlarr {
     pub fn start(resource_dir: &Path, data_dir: &Path, http: reqwest::Client) -> Arc<Self> {
         let base_url = format!("http://127.0.0.1:{PORT}");
@@ -66,6 +88,7 @@ impl Prowlarr {
             anyhow::ensure!(binary.exists(), "Prowlarr isn't bundled in this build");
             std::fs::create_dir_all(&data_dir)?;
             let api_key = ensure_config(&data_dir)?;
+            kill_leftovers(&binary);
             let child = Command::new(&binary)
                 .arg("-nobrowser")
                 .arg(format!("-data={}", data_dir.display()))
@@ -92,10 +115,22 @@ impl Prowlarr {
             let http_client = http.clone();
             tauri::async_runtime::spawn(async move {
                 for _ in 0..120 {
-                    let ping = http_client.get(format!("{}/ping", p.base_url)).timeout(Duration::from_secs(2)).send().await;
-                    if ping.is_ok_and(|r| r.status().is_success()) {
-                        *p.status.lock().unwrap() = Status::Ready;
-                        return;
+                    let ping = http_client
+                        .get(format!("{}/api/v1/system/status", p.base_url))
+                        .header("X-Api-Key", &p.api_key)
+                        .timeout(Duration::from_secs(2))
+                        .send()
+                        .await;
+                    match ping.map(|r| r.status()) {
+                        Ok(s) if s.is_success() => {
+                            *p.status.lock().unwrap() = Status::Ready;
+                            return;
+                        }
+                        Ok(reqwest::StatusCode::UNAUTHORIZED) => {
+                            *p.status.lock().unwrap() = Status::Failed(format!("another Prowlarr is already using port {PORT}"));
+                            return;
+                        }
+                        _ => {}
                     }
                     if let Some(Ok(Some(code))) = p.child.lock().unwrap().as_mut().map(|c| c.try_wait()) {
                         *p.status.lock().unwrap() = Status::Failed(format!("Prowlarr exited during startup ({code})"));
