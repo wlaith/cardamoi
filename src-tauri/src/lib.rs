@@ -1,5 +1,4 @@
 mod db;
-mod flaresolverr;
 mod local;
 mod player;
 mod prowlarr;
@@ -33,14 +32,13 @@ use tauri::{
     AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder,
 };
 use tauri_plugin_opener::OpenerExt;
-use flaresolverr::{FlareSolverrClient, FlareSolverrConfig};
 
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "m4v", "mkv", "webm", "mov", "avi", "ogv", "mpg", "mpeg", "wmv"];
 
 struct AppState {
     session: Arc<Session>,
     db: Mutex<rusqlite::Connection>,
-    http: Arc<FlareSolverrClient>,
+    http: reqwest::Client,
     download_dir: PathBuf,
     prowlarr: Arc<Prowlarr>,
     stream: stream::StreamServer,
@@ -172,24 +170,6 @@ fn set_source_enabled(state: State<'_, AppState>, id: i64, enabled: bool) -> Cmd
 #[tauri::command]
 fn remove_source(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
     db::delete_source(&state.db.lock().unwrap(), id).map_err(err)
-}
-
-#[tauri::command]
-fn get_flaresolverr_config(state: State<'_, AppState>) -> CmdResult<FlareSolverrConfig> {
-    let config = db::get_flaresolverr_config(&state.db.lock().unwrap()).map_err(err)?;
-    Ok(config)
-}
-
-#[tauri::command]
-async fn set_flaresolverr_config(state: State<'_, AppState>, config: FlareSolverrConfig) -> CmdResult<()> {
-    db::set_flaresolverr_config(&state.db.lock().unwrap(), &config).map_err(err)?;
-    state.http.set_config(config);
-    Ok(())
-}
-
-#[tauri::command]
-async fn test_flaresolverr(state: State<'_, AppState>) -> CmdResult<()> {
-    state.http.test().await.map_err(err)
 }
 
 #[derive(Deserialize)]
@@ -1276,8 +1256,18 @@ fn init_state(app: &AppHandle) -> anyhow::Result<AppState> {
     })?;
 
     let db_conn = db::open(&data_dir.join("library.db"))?;
-    let fs_config = db::get_flaresolverr_config(&db_conn)?;
-    let http = Arc::new(FlareSolverrClient::new(fs_config)?);
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if attempt.url().scheme() == "magnet" {
+                attempt.stop()
+            } else if attempt.previous().len() > 10 {
+                attempt.error("too many redirects")
+            } else {
+                attempt.follow()
+            }
+        }))
+        .build()?;
 
     let prowlarr = Prowlarr::start(&app.path().resource_dir()?, &data_dir, http.clone());
 
@@ -1405,9 +1395,6 @@ pub fn run() {
             add_source,
             set_source_enabled,
             remove_source,
-            get_flaresolverr_config,
-            set_flaresolverr_config,
-            test_flaresolverr,
             add_download,
             retry_download,
             scan_library_folder,

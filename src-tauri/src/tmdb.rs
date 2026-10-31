@@ -1,7 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-
-use crate::flaresolverr::FlareSolverrClient;
 
 const API: &str = "https://api.themoviedb.org/3";
 const IMAGES: &str = "https://image.tmdb.org/t/p";
@@ -143,7 +140,7 @@ impl RawTitle {
 }
 
 pub struct Tmdb {
-    pub http: Arc<FlareSolverrClient>,
+    pub http: reqwest::Client,
 }
 
 impl Tmdb {
@@ -232,12 +229,11 @@ impl Tmdb {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::flaresolverr::FlareSolverrConfig;
 
     #[tokio::test]
     #[ignore]
     async fn live_lookup() {
-        let tmdb = Tmdb { http: Arc::new(FlareSolverrClient::new(FlareSolverrConfig::default()).unwrap()) };
+        let tmdb = Tmdb { http: reqwest::Client::new() };
         let results = tmdb.search("The Matrix").await.unwrap();
         let matrix = results.iter().find(|t| t.kind == Kind::Movie && t.year == Some(1999)).unwrap();
         assert!(matrix.poster.is_some());

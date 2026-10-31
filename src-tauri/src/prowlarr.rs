@@ -9,7 +9,6 @@ use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 
 use crate::sources::{SearchQuery, SearchResult, Source};
-use crate::flaresolverr::FlareSolverrClient;
 
 const PORT: u16 = 9797;
 
@@ -58,7 +57,7 @@ fn ensure_config(data_dir: &Path) -> anyhow::Result<String> {
 }
 
 impl Prowlarr {
-    pub fn start(resource_dir: &Path, data_dir: &Path, http: Arc<FlareSolverrClient>) -> Arc<Self> {
+    pub fn start(resource_dir: &Path, data_dir: &Path, http: reqwest::Client) -> Arc<Self> {
         let base_url = format!("http://127.0.0.1:{PORT}");
         let data_dir = data_dir.join("prowlarr");
         let binary = resource_dir.join("prowlarr").join("Prowlarr");
@@ -90,7 +89,7 @@ impl Prowlarr {
 
         if matches!(*prowlarr.status.lock().unwrap(), Status::Starting) {
             let p = prowlarr.clone();
-            let http_client = http.inner().clone();
+            let http_client = http.clone();
             tauri::async_runtime::spawn(async move {
                 for _ in 0..120 {
                     let ping = http_client.get(format!("{}/ping", p.base_url)).timeout(Duration::from_secs(2)).send().await;
@@ -130,7 +129,7 @@ impl Drop for Prowlarr {
 
 pub struct ProwlarrSource {
     pub prowlarr: Arc<Prowlarr>,
-    pub http: Arc<FlareSolverrClient>,
+    pub http: reqwest::Client,
 }
 
 #[derive(Deserialize)]

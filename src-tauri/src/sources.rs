@@ -1,8 +1,5 @@
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-
-use crate::flaresolverr::FlareSolverrClient;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SearchQuery {
@@ -33,7 +30,7 @@ pub trait Source: Send + Sync {
 }
 
 pub struct InternetArchive {
-    pub http: Arc<FlareSolverrClient>,
+    pub http: reqwest::Client,
 }
 
 #[derive(Deserialize)]
@@ -138,7 +135,7 @@ impl Source for InternetArchive {
 }
 
 pub struct Torznab {
-    pub http: Arc<FlareSolverrClient>,
+    pub http: reqwest::Client,
     pub name: String,
     pub url: String,
     pub api_key: String,
@@ -241,7 +238,6 @@ impl Source for Torznab {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::flaresolverr::FlareSolverrConfig;
 
     const FEED: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
@@ -303,7 +299,7 @@ mod tests {
     #[tokio::test]
     async fn talks_to_a_torznab_server() {
         let url = fake_torznab().await;
-        let source = |key: &str| Torznab { http: Arc::new(FlareSolverrClient::new(FlareSolverrConfig::default()).unwrap()), name: "Fake".into(), url: url.clone(), api_key: key.into() };
+        let source = |key: &str| Torznab { http: reqwest::Client::new(), name: "Fake".into(), url: url.clone(), api_key: key.into() };
 
         source("good").test().await.unwrap();
         let bad = source("bad").test().await.unwrap_err();
@@ -317,7 +313,7 @@ mod tests {
 
     #[test]
     fn endpoint_appends_api() {
-        let t = |url: &str| Torznab { http: Arc::new(FlareSolverrClient::new(FlareSolverrConfig::default()).unwrap()), name: "x".into(), url: url.into(), api_key: "k".into() };
+        let t = |url: &str| Torznab { http: reqwest::Client::new(), name: "x".into(), url: url.into(), api_key: "k".into() };
         assert_eq!(t("http://localhost:9696/1/").endpoint(), "http://localhost:9696/1/api");
         assert_eq!(t("http://localhost:9117/api/v2.0/indexers/all/results/torznab/api").endpoint(), "http://localhost:9117/api/v2.0/indexers/all/results/torznab/api");
     }
