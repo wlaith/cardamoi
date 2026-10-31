@@ -15,7 +15,10 @@ Currently developed and tested on macOS (Apple Silicon).
 
 - Node.js 20+
 - Rust (stable)
-- mpv (`brew install mpv`)
+- [mpv](https://mpv.io/installation/), on your `PATH`:
+  - macOS: `brew install mpv`
+  - Windows: `scoop install mpv` or `choco install mpv`, or download a build from mpv.io and add its folder to `PATH`
+  - Linux: your package manager, e.g. `sudo apt install mpv`, `sudo pacman -S mpv`, or `sudo dnf install mpv` (Fedora needs RPM Fusion)
 
 ## Setup
 
