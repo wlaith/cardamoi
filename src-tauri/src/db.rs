@@ -662,6 +662,8 @@ mod tests {
         assert!(videos_for(&conn, id).unwrap().is_empty());
         assert_eq!(get_tracks(&conn, id, 2).unwrap(), None);
         assert!(list_subtitles(&conn, id, 2).unwrap().is_empty());
+        // Windows can't delete a file that's still open.
+        drop(conn);
         std::fs::remove_file(&path).unwrap();
     }
 
@@ -690,6 +692,7 @@ mod tests {
         let got = get(&conn, id).unwrap();
         assert_eq!((got.title.as_str(), got.tmdb_id, got.episode), ("Some Show", Some(42), Some(1)));
         assert_eq!(got.poster.as_deref(), Some("old.jpg"));
+        drop(conn);
         std::fs::remove_file(&path).unwrap();
     }
 

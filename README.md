@@ -9,7 +9,9 @@ A desktop app for finding, downloading and watching films and TV. It keeps a loc
 
 Built with [Tauri 2](https://tauri.app), Vue 3 and Rust. Torrents are handled by [librqbit](https://github.com/ikatson/rqbit); search goes through a bundled [Prowlarr](https://prowlarr.com) or any Torznab endpoint you add. Catalog data comes from [TMDB](https://www.themoviedb.org).
 
-Currently developed and tested on macOS (Apple Silicon).
+Builds for macOS (Apple Silicon and Intel), Windows and Linux are on the [releases page](https://github.com/wlaith/cardamoi/releases). It is primarily tested on macOS (Apple Silicon).
+
+macOS builds aren't notarized yet, so the first time you open the app, right-click it and choose Open (or run `xattr -dr com.apple.quarantine /Applications/cardamoi.app`).
 
 ## Requirements
 
@@ -24,7 +26,7 @@ Currently developed and tested on macOS (Apple Silicon).
 
 ```sh
 npm install
-./scripts/fetch-prowlarr.sh          # arm64 by default; pass x64 for Intel
+./scripts/fetch-prowlarr.sh          # osx-arm64 by default; or osx-x64, linux-x64, windows-x64
 npm run tauri dev
 ```
 
@@ -37,6 +39,16 @@ Downloads go to `~/Movies/cardamoi`. Videos you copy into that folder yourself a
 ```sh
 cd src-tauri && cargo test
 ```
+
+## Releasing
+
+Pushes and pull requests to `development` and `main` run CI on macOS, Windows and Linux. Releases are cut from `main`:
+
+1. On `development`, run `./scripts/bump-version.sh 0.2.0` and merge that.
+2. Open a pull request from `development` to `main` and merge it.
+3. Tag the release: `git fetch && git tag v0.2.0 origin/main && git push origin v0.2.0`
+
+The tag starts the release workflow. It checks that the tag is on `main` and matches the app version, builds every platform into a draft release, and publishes it once every build has uploaded. A tag with a suffix, like `v0.2.0-beta.1`, is published as a pre-release.
 
 ## Disclaimer
 

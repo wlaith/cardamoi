@@ -1,0 +1,156 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  TAG: ${{ github.ref_name }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check the tag is on main and matches the app version
+        id: check
+        run: |
+          git merge-base --is-ancestor "$(git rev-parse "$TAG^{commit}")" origin/main \
+            || { echo "::error::$TAG is not on main"; exit 1; }
+          version=${TAG#v}
+          check() {
+            [ "$2" = "$version" ] || { echo "::error file=$1::version is $2 but the tag is $TAG"; exit 1; }
+          }
+          check package.json "$(jq -r .version package.json)"
+          check src-tauri/tauri.conf.json "$(jq -r .version src-tauri/tauri.conf.json)"
+          check src-tauri/Cargo.toml "$(sed -n 's/^version = "\(.*\)"$/\1/p' src-tauri/Cargo.toml | head -1)"
+          case "$version" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  create-release:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      id: ${{ steps.create.outputs.id }}
+    steps:
+      # Created once up front so the build legs don't race to create it.
+      # Drafts aren't visible by tag, so look one up from an earlier run first.
+      - name: Create draft release
+        id: create
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          find_id() {
+            gh api "repos/$GITHUB_REPOSITORY/releases" --paginate -q ".[] | select(.tag_name == \"$TAG\") | .id"
+          }
+          id=$(find_id)
+          if [ -z "$id" ]; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "cardamoi $TAG" \
+              --draft --verify-tag --generate-notes --prerelease="$PRERELEASE"
+            id=$(find_id)
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: create-release
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            prowlarr: osx-arm64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            prowlarr: osx-x64
+          # The oldest supported runner keeps the glibc floor low for the AppImage.
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            prowlarr: linux-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            prowlarr: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+      - run: sh scripts/fetch-prowlarr.sh ${{ matrix.prowlarr }}
+      # An empty APPLE_* variable makes Tauri try to sign with it, so only
+      # export the ones that are set. Until then builds stay ad-hoc signed.
+      - name: Use Apple signing if configured
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            value=$(printenv "$name" || true)
+            [ -n "$value" ] && printf '%s<<EOF_%s\n%s\nEOF_%s\n' "$name" "$name" "$value" "$name" >> "$GITHUB_ENV"
+          done
+          exit 0
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.id }}
+          args: --target ${{ matrix.target }}
+
+  # Only goes public once every platform uploaded; a failed leg leaves a draft.
+  publish:
+    needs: [create-release, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.create-release.outputs.id }}
+        run: gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false --silent

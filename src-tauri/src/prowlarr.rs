@@ -56,6 +56,43 @@ fn ensure_config(data_dir: &Path) -> anyhow::Result<String> {
     Ok(key)
 }
 
+/// The console build, since `Prowlarr.exe` adds a tray icon.
+#[cfg(windows)]
+const BINARY: &str = "Prowlarr.Console.exe";
+
+#[cfg(not(windows))]
+const BINARY: &str = "Prowlarr";
+
+#[cfg(windows)]
+fn hidden(cmd: &mut Command) -> &mut Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+
+#[cfg(not(windows))]
+fn hidden(cmd: &mut Command) -> &mut Command {
+    cmd
+}
+
+/// Matches the full path, so a Prowlarr the user runs themselves is left alone.
+#[cfg(windows)]
+fn kill_leftovers(binary: &Path) {
+    let path = binary.to_string_lossy().replace('\'', "''");
+    let script = format!(
+        "Get-CimInstance Win32_Process | Where-Object ExecutablePath -eq '{path}' | \
+         ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -PassThru }} | \
+         Wait-Process -Timeout 3 -ErrorAction SilentlyContinue"
+    );
+    let _ = hidden(&mut Command::new("powershell"))
+        .args(["-NoProfile", "-NonInteractive", "-Command"])
+        .arg(&script)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+#[cfg(unix)]
 fn kill_leftovers(binary: &Path) {
     let pattern = binary.to_string_lossy();
     let alive = || {
@@ -82,14 +119,14 @@ impl Prowlarr {
     pub fn start(resource_dir: &Path, data_dir: &Path, http: reqwest::Client) -> Arc<Self> {
         let base_url = format!("http://127.0.0.1:{PORT}");
         let data_dir = data_dir.join("prowlarr");
-        let binary = resource_dir.join("prowlarr").join("Prowlarr");
+        let binary = resource_dir.join("prowlarr").join(BINARY);
 
         let launched = (|| -> anyhow::Result<(String, Child)> {
             anyhow::ensure!(binary.exists(), "Prowlarr isn't bundled in this build");
             std::fs::create_dir_all(&data_dir)?;
             let api_key = ensure_config(&data_dir)?;
             kill_leftovers(&binary);
-            let child = Command::new(&binary)
+            let child = hidden(&mut Command::new(&binary))
                 .arg("-nobrowser")
                 .arg(format!("-data={}", data_dir.display()))
                 .stdin(Stdio::null())
