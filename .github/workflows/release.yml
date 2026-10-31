@@ -3,11 +3,20 @@ name: release
 on:
   push:
     tags: ['v*']
+  # Builds from any branch as workflow artifacts, without releasing.
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build
+        type: choice
+        default: all
+        options: [all, osx-arm64, osx-x64, linux-x64, windows-x64]
 
 permissions: {}
 
+# One release per tag at a time; manual builds never queue behind each other.
 concurrency:
-  group: release-${{ github.ref }}
+  group: ${{ github.event_name == 'push' && format('release-{0}', github.ref) || format('build-{0}', github.run_id) }}
   cancel-in-progress: false
 
 defaults:
@@ -19,6 +28,7 @@ env:
 
 jobs:
   verify:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -48,6 +58,7 @@ jobs:
 
   create-release:
     needs: verify
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -66,34 +77,45 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/releases" --paginate -q ".[] | select(.tag_name == \"$TAG\") | .id"
           }
           id=$(find_id)
+          # Take the id from the response: a fresh draft can lag behind in the listing.
           if [ -z "$id" ]; then
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "cardamoi $TAG" \
-              --draft --verify-tag --generate-notes --prerelease="$PRERELEASE"
-            id=$(find_id)
+            id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" -q .id \
+              -f tag_name="$TAG" -f name="cardamoi $TAG" \
+              -F draft=true -F prerelease="$PRERELEASE" -F generate_release_notes=true)
           fi
+          [ -n "$id" ] || { echo "::error::couldn't create the release"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
+  platforms:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.pick.outputs.include }}
+    steps:
+      - id: pick
+        env:
+          PLATFORM: ${{ inputs.platform || 'all' }}
+        # The oldest supported Ubuntu keeps the glibc floor low for the AppImage.
+        run: |
+          all='[
+            {"os": "macos-latest", "target": "aarch64-apple-darwin", "prowlarr": "osx-arm64"},
+            {"os": "macos-latest", "target": "x86_64-apple-darwin", "prowlarr": "osx-x64"},
+            {"os": "ubuntu-22.04", "target": "x86_64-unknown-linux-gnu", "prowlarr": "linux-x64"},
+            {"os": "windows-latest", "target": "x86_64-pc-windows-msvc", "prowlarr": "windows-x64"}
+          ]'
+          echo "include=$(jq -c --arg p "$PLATFORM" 'map(select($p == "all" or .prowlarr == $p))' <<<"$all")" >> "$GITHUB_OUTPUT"
+
   build:
-    needs: create-release
+    needs: [create-release, platforms]
+    # Runs after create-release, or on its own when that was skipped by a manual run.
+    if: ${{ !failure() && !cancelled() }}
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            prowlarr: osx-arm64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            prowlarr: osx-x64
-          # The oldest supported runner keeps the glibc floor low for the AppImage.
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            prowlarr: linux-x64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            prowlarr: windows-x64
+        include: ${{ fromJSON(needs.platforms.outputs.include) }}
+    env:
+      APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -118,33 +140,39 @@ jobs:
           workspaces: src-tauri
           key: ${{ matrix.target }}
       - run: sh scripts/fetch-prowlarr.sh ${{ matrix.prowlarr }}
-      # An empty APPLE_* variable makes Tauri try to sign with it, so only
-      # export the ones that are set. Until then builds stay ad-hoc signed.
-      - name: Use Apple signing if configured
-        if: runner.os == 'macOS'
+      # Unsigned (ad-hoc on macOS) until the Apple secrets exist: an empty APPLE_*
+      # variable makes Tauri try to sign with it, so they're only set when present.
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        if: runner.os != 'macOS' || env.APPLE_SIGNING != 'true'
         env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # linuxdeploy's bundled strip can't read Prowlarr's newer .NET libraries;
+          # the app binary is already stripped by the release profile.
+          NO_STRIP: ${{ runner.os == 'Linux' }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.id }}
+          # Verbose on Linux only, so linuxdeploy failures show their cause.
+          args: --target ${{ matrix.target }}${{ runner.os == 'Linux' && ' --verbose' || '' }}
+          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        if: runner.os == 'macOS' && env.APPLE_SIGNING == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
-            value=$(printenv "$name" || true)
-            [ -n "$value" ] && printf '%s<<EOF_%s\n%s\nEOF_%s\n' "$name" "$name" "$value" "$name" >> "$GITHUB_ENV"
-          done
-          exit 0
-      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         with:
           releaseId: ${{ needs.create-release.outputs.id }}
           args: --target ${{ matrix.target }}
+          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
 
   # Only goes public once every platform uploaded; a failed leg leaves a draft.
   publish:
     needs: [create-release, build]
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
