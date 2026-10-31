@@ -114,6 +114,8 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.platforms.outputs.include) }}
+    env:
+      APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -138,24 +140,10 @@ jobs:
           workspaces: src-tauri
           key: ${{ matrix.target }}
       - run: sh scripts/fetch-prowlarr.sh ${{ matrix.prowlarr }}
-      # An empty APPLE_* variable makes Tauri try to sign with it, so only
-      # export the ones that are set. Until then builds stay ad-hoc signed.
-      - name: Use Apple signing if configured
-        if: runner.os == 'macOS'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
-            value=$(printenv "$name" || true)
-            [ -n "$value" ] && printf '%s<<EOF_%s\n%s\nEOF_%s\n' "$name" "$name" "$value" "$name" >> "$GITHUB_ENV"
-          done
-          exit 0
+      # Unsigned (ad-hoc on macOS) until the Apple secrets exist: an empty APPLE_*
+      # variable makes Tauri try to sign with it, so they're only set when present.
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        if: runner.os != 'macOS' || env.APPLE_SIGNING != 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           # linuxdeploy's bundled strip can't read Prowlarr's newer .NET libraries;
@@ -163,8 +151,22 @@ jobs:
           NO_STRIP: ${{ runner.os == 'Linux' }}
         with:
           releaseId: ${{ needs.create-release.outputs.id }}
-          # Verbose so bundler failures (linuxdeploy especially) show their cause.
-          args: --target ${{ matrix.target }} --verbose
+          # Verbose on Linux only, so linuxdeploy failures show their cause.
+          args: --target ${{ matrix.target }}${{ runner.os == 'Linux' && ' --verbose' || '' }}
+          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        if: runner.os == 'macOS' && env.APPLE_SIGNING == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.id }}
+          args: --target ${{ matrix.target }}
           uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
 
   # Only goes public once every platform uploaded; a failed leg leaves a draft.
