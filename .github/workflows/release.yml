@@ -70,11 +70,13 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/releases" --paginate -q ".[] | select(.tag_name == \"$TAG\") | .id"
           }
           id=$(find_id)
+          # Take the id from the response: a fresh draft can lag behind in the listing.
           if [ -z "$id" ]; then
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "cardamoi $TAG" \
-              --draft --verify-tag --generate-notes --prerelease="$PRERELEASE"
-            id=$(find_id)
+            id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" -q .id \
+              -f tag_name="$TAG" -f name="cardamoi $TAG" \
+              -F draft=true -F prerelease="$PRERELEASE" -F generate_release_notes=true)
           fi
+          [ -n "$id" ] || { echo "::error::couldn't create the release"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
   build:
