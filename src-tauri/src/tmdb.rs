@@ -31,6 +31,8 @@ pub struct Title {
     pub id: u64,
     pub kind: Kind,
     pub title: String,
+    #[serde(skip)]
+    pub original_title: String,
     pub year: Option<i32>,
     pub poster: Option<String>,
     pub backdrop: Option<String>,
@@ -73,6 +75,8 @@ struct RawTitle {
     media_type: Option<String>,
     title: Option<String>,
     name: Option<String>,
+    original_title: Option<String>,
+    original_name: Option<String>,
     release_date: Option<String>,
     first_air_date: Option<String>,
     poster_path: Option<String>,
@@ -128,6 +132,7 @@ impl RawTitle {
             id: self.id,
             kind,
             title: self.title.or(self.name).unwrap_or_default(),
+            original_title: self.original_title.or(self.original_name).unwrap_or_default(),
             year: year(self.release_date.as_deref().or(self.first_air_date.as_deref())),
             poster: image("w342", self.poster_path),
             backdrop: image("w1280", self.backdrop_path),
@@ -179,7 +184,10 @@ impl Tmdb {
         let norm = crate::release::normalize(title);
         Ok(results
             .into_iter()
-            .filter(|t| t.kind == wanted && crate::release::normalize(&t.title) == norm)
+            .filter(|t| {
+                t.kind == wanted
+                    && (crate::release::normalize(&t.title) == norm || crate::release::normalize(&t.original_title) == norm)
+            })
             .find(|t| year.is_none() || t.year.zip(year).is_some_and(|(a, b)| (a - b).abs() <= 1)))
     }
 
@@ -239,5 +247,8 @@ mod tests {
         assert!(details.seasons.iter().any(|s| s.number == 1));
         let episodes = tmdb.episodes(show.id, 1).await.unwrap();
         assert_eq!(episodes[0].number, 1);
+
+        let film = tmdb.best_match("La bola negra", None, false).await.unwrap().unwrap();
+        assert_eq!(film.original_title, "La bola negra");
     }
 }

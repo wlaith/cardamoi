@@ -20,14 +20,21 @@ static YEAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[(\[]?\b(19\d{2}|20
 static RESOLUTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b(2160p|4k|1080p|720p|576p|480p)\b").unwrap());
 static JUNK: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)\b(\d{3,4}p|4k|uhd|hdr|bluray|blu-ray|brrip|bdrip|web-?dl|webrip|web|hdtv|dvdrip|dvd|remux|x26[45]|h\.?26[45]|hevc|xvid|aac|ac3|dts|complete|proper|repack|extended|unrated|multi)\b",
+        r"(?i)\b(\d{3,4}p|4k|uhd|hdr|bluray|blu-ray|brrip|bdrip|web-?dl|webrip|web|hdtv|dvdrip|dvd|remux|x26[45]|h\.?26[45]|hevc|av1|svt-av1|\d{1,2}-?bit|xvid|aac|ac3|dts|complete|proper|repack|extended|unrated|multi)\b",
     )
     .unwrap()
 });
 
 pub fn parse(name: &str) -> Release {
     let name = name.replace(['.', '_'], " ");
+    let name = match name.trim_start().strip_prefix('[').and_then(|rest| rest.split_once(']')) {
+        Some((_, rest)) => rest.to_owned(),
+        None => name,
+    };
     let mut cut = name.len();
+    if let Some(i) = name.find('[').filter(|&i| i > 0) {
+        cut = i;
+    }
     let mut release = Release::default();
 
     if let Some(c) = EPISODE.captures(&name) {
@@ -130,6 +137,20 @@ mod tests {
         assert_eq!(r.title, "Breaking Bad");
         assert_eq!((r.season, r.episode), (Some(5), None));
         assert_eq!(r.resolution.as_deref(), Some("2160p"));
+    }
+
+    #[test]
+    fn bracketed_alternate_title_and_group_tag() {
+        let r = parse("La bola negra [The Black Ball] 10bit 4KDS 1080p SVT-AV1-Tritium.mkv");
+        assert_eq!(r.title, "La bola negra");
+        assert_eq!(r.resolution.as_deref(), Some("1080p"));
+
+        let r = parse("[SubsPlease] Frieren - S01E05 (1080p) [ABCD1234].mkv");
+        assert_eq!(r.title, "Frieren");
+        assert_eq!((r.season, r.episode), (Some(1), Some(5)));
+
+        let r = parse("Dune Part Two 2024 10bit 2160p");
+        assert_eq!(r.title, "Dune Part Two");
     }
 
     #[test]

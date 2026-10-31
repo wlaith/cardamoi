@@ -552,6 +552,19 @@ fn resume_resolving(app: &AppHandle) {
     }
 }
 
+///retries matching for downloads that couldn't be identified when they were added.
+async fn identify_unmatched(app: AppHandle) {
+    let state = app.state::<AppState>();
+    let Ok(items) = db::list(&state.db.lock().unwrap()) else { return };
+    for item in items.into_iter().filter(|i| i.tmdb_id.is_none()) {
+        let mut parsed = release::parse(&item.title);
+        parsed.year = parsed.year.or(item.year);
+        parsed.season = parsed.season.or(item.season);
+        parsed.episode = parsed.episode.or(item.episode);
+        identify(&state, item.id, parsed).await;
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LibraryEntry {
@@ -1346,6 +1359,7 @@ pub fn run() {
             app.manage(state);
             tauri::async_runtime::spawn(auto_fetch_subtitles(app.handle().clone()));
             resume_resolving(app.handle());
+            tauri::async_runtime::spawn(identify_unmatched(app.handle().clone()));
             tauri::async_runtime::spawn(watch_folder(app.handle().clone()));
             app.set_menu(build_menu(app.handle())?)?;
             app.on_menu_event(|app, event| {
