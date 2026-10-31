@@ -39,20 +39,44 @@ function onKey(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div v-if="contextMenu" class="fixed inset-0 z-50" @mousedown.self="close" @contextmenu.prevent="close">
-    <div
-      ref="menu"
-      role="menu"
-      class="menu fixed min-w-56"
-      :style="{ left: `${position.left}px`, top: `${position.top}px` }"
-      @keydown="onKey"
-    >
-      <template v-for="(item, i) in contextMenu.items" :key="i">
-        <div v-if="item === 'separator'" class="menu-separator" role="separator" />
-        <button v-else role="menuitem" class="menu-item" :class="{ danger: item.danger }" :disabled="item.disabled" @click="choose(item)">
-          {{ item.label }}
-        </button>
-      </template>
+  <Transition name="menu" :duration="{ enter: 144, leave: 89 }">
+    <div v-if="contextMenu" class="fixed inset-0 z-50" @mousedown.self="close" @contextmenu.prevent="close">
+      <div
+        ref="menu"
+        role="menu"
+        class="menu fixed min-w-56"
+        :style="{
+          left: `${position.left}px`,
+          top: `${position.top}px`,
+          transformOrigin: `${contextMenu.x - position.left}px ${contextMenu.y - position.top}px`,
+        }"
+        @keydown="onKey"
+      >
+        <template v-for="(item, i) in contextMenu.items" :key="i">
+          <div v-if="item === 'separator'" class="menu-separator" role="separator" />
+          <button v-else role="menuitem" class="menu-item" :class="{ danger: item.danger }" :disabled="item.disabled" @click="choose(item)">
+            {{ item.label }}
+          </button>
+        </template>
+      </div>
     </div>
-  </div>
+  </Transition>
 </template>
+
+<style scoped>
+.menu-enter-active .menu {
+  transition:
+    opacity var(--dur-2) var(--ease-out),
+    scale var(--dur-2) var(--ease-out);
+}
+.menu-leave-active .menu {
+  transition: opacity var(--dur-1) var(--ease-out);
+}
+.menu-enter-from .menu {
+  opacity: 0;
+  scale: 0.96;
+}
+.menu-leave-to .menu {
+  opacity: 0;
+}
+</style>

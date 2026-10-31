@@ -1,7 +1,7 @@
 import { api, episodeLabel, isMpvMissing, magnetName, plainError, type LibraryEntry } from "./api";
 import { nextEpisode, showKey, type LocalEpisode, type Show } from "./library";
 import { go } from "./nav";
-import { announce, refresh, selection, startOpening, stopOpening, type Selected } from "./store";
+import { announce, hideEntries, refresh, selection, showEntries, startOpening, stopOpening, type Selected } from "./store";
 import { alertSheet, hud, sheet, type MenuEntry } from "./ui";
 
 export function videoLabel(ep: LocalEpisode) {
@@ -97,26 +97,45 @@ export function retry(entry: LibraryEntry) {
   attempt("The download couldn't be restarted.", () => api.retryDownload(entry.id));
 }
 
-export async function moveToTrash(entry: LibraryEntry) {
-  const notStarted = entry.videos.length === 0;
-  const count = entry.videos.length;
-  const message = notStarted
-    ? "Nothing has been downloaded yet, so there are no files to remove."
-    : count > 1
-      ? `This download holds ${count} episodes. All of them are moved to the Trash, and you can put them back from there.`
-      : "The video file is moved to the Trash. You can put it back from there.";
-  const choice = await alertSheet({
-    title: notStarted ? `Cancel "${entry.title}"?` : `Move "${entry.title}" to the Trash?`,
-    message,
-    buttons: [
-      { label: notStarted ? "Keep Waiting" : "Cancel", value: "cancel" },
-      { label: notStarted ? "Cancel Download" : "Move to Trash", value: "trash", kind: "danger" },
-    ],
-  });
-  if (choice !== "trash") return;
-  if (await attempt(`"${entry.title}" couldn't be removed.`, () => api.remove(entry.id))) {
-    if (selection.value?.kind === "video" && selection.value.ep.entry.id === entry.id) selection.value = null;
-    announce(notStarted ? `Cancelled "${entry.title}"` : `Moved "${entry.title}" to the Trash`);
+export function moveToTrash(list: LibraryEntry | LibraryEntry[]) {
+  const all = Array.isArray(list) ? list : [list];
+  if (!all.length) return;
+  const ids = all.map((e) => e.id);
+  hideEntries(ids);
+  const sel = selection.value;
+  const selectedId = sel?.kind === "video" ? sel.ep.entry.id : null;
+  if ((selectedId != null && ids.includes(selectedId)) || (sel?.kind === "show" && sel.show.entries.some((e) => ids.includes(e.id)))) {
+    selection.value = null;
+  }
+  const notStarted = all.every((e) => e.videos.length === 0);
+  const what = all.length === 1 ? `"${all[0].title}"` : `${all.length} items`;
+  announce(
+    notStarted ? `Cancelled ${what}` : `Moved ${what} to the Trash`,
+    async () => showEntries(ids),
+    async () => {
+      for (const e of all) {
+        try {
+          await api.remove(e.id);
+        } catch (err) {
+          showEntries([e.id]);
+          showError(`"${e.title}" couldn't be removed.`, err);
+        }
+      }
+      showEntries(ids);
+    },
+  );
+}
+
+export async function setManyWatched(eps: LocalEpisode[], watched: boolean) {
+  if (eps.length === 1) return setWatched(eps[0], watched);
+  const before = eps.map((ep) => [ep, ep.video.watched] as const);
+  const ok = await attempt("The watched marks couldn't be changed.", () =>
+    Promise.all(eps.map((ep) => api.markWatched(ep.entry.id, ep.video.fileIndex, watched))),
+  );
+  if (ok) {
+    announce(`Marked ${eps.length} as ${watched ? "watched" : "unwatched"}`, () =>
+      Promise.all(before.map(([ep, was]) => api.markWatched(ep.entry.id, ep.video.fileIndex, was))),
+    );
   }
 }
 
@@ -222,7 +241,7 @@ export function videoMenu(ep: LocalEpisode, opts: { open?: () => void } = {}): M
   else if (e.status === "paused") items.push({ label: "Resume Download", action: () => resume(e) });
   else if (e.status === "error") items.push({ label: "Try Download Again", action: () => retry(e) });
   if (items[items.length - 1] !== "separator") items.push("separator");
-  items.push({ label: "Move to Trash…", action: () => moveToTrash(e), danger: true });
+  items.push({ label: "Move to Trash", action: () => moveToTrash(e), danger: true });
   return items;
 }
 
