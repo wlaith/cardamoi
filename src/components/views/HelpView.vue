@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { nextTick, onMounted, watch } from "vue";
 import { go } from "../../nav";
+import { openTmdb, TMDB_API_SETTINGS, TMDB_SIGNUP } from "../../tmdb";
 import PageHeader from "../ui/PageHeader.vue";
 
 const props = defineProps<{ topic?: string }>();
 
 const topics = [
   { id: "start", title: "Getting started" },
+  { id: "tmdb", title: "Your TMDB key" },
   { id: "sources", title: "Sources and indexers" },
   { id: "files", title: "Where your videos are kept" },
   { id: "subtitles", title: "Subtitles" },
@@ -61,6 +63,27 @@ watch(() => props.topic, scrollToTopic);
           Type a film or show into the search field at the top right and press Return. Open a result, pick a release (the
           one marked <strong class="font-semibold text-ink">Best Match</strong> is a safe choice) and press Download. It appears under
           <strong class="font-semibold text-ink">Downloads</strong>, and on <strong class="font-semibold text-ink">Up Next</strong> as soon as enough of it is on disk to watch.
+        </p>
+      </section>
+      <section id="help-tmdb">
+        <h2 class="mb-4 text-heading text-ink">Your TMDB key</h2>
+        <p class="mt-4 first-of-type:mt-0">
+          Search, posters, episode lists and matching downloads to the right title all come from TMDB, a free film and TV
+          database. cardamoi uses your own key, which is free for personal use. Without one, the library, downloads and
+          playback still work; titles just have no artwork and aren't matched.
+        </p>
+        <p class="mt-4 first-of-type:mt-0">
+          To get one,
+          <button class="link" @click="openTmdb(TMDB_SIGNUP)">create a free TMDB account</button>, then open
+          <button class="link" @click="openTmdb(TMDB_API_SETTINGS)">your API settings</button> and request a key: choose
+          Developer and say it's for personal, non-commercial use. Copy the
+          <strong class="font-semibold text-ink">API Read Access Token</strong> (the long one that starts with eyJ; the shorter API Key works too) and paste it in
+          <button class="link" @click="go({ name: 'preferences', pane: 'tmdb' })">Preferences › TMDB</button>, or
+          <button class="link" @click="go({ name: 'setup' })">let cardamoi walk you through it</button>.
+        </p>
+        <p class="mt-4 first-of-type:mt-0">
+          If TMDB stops accepting the key, a bar under the toolbar says so. Copy the token again from your API settings and
+          replace it. Downloads that couldn't be matched are matched again as soon as a working key is saved.
         </p>
       </section>
       <section id="help-sources">

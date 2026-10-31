@@ -16,18 +16,16 @@ Currently developed and tested on macOS (Apple Silicon).
 - Node.js 20+
 - Rust (stable)
 - mpv (`brew install mpv`)
-- A TMDB API read access token: https://www.themoviedb.org/settings/api
 
 ## Setup
 
 ```sh
 npm install
 ./scripts/fetch-prowlarr.sh          # arm64 by default; pass x64 for Intel
-echo 'TMDB_TOKEN=your-token' > src-tauri/.env
 npm run tauri dev
 ```
 
-The token is read at build time, from `TMDB_TOKEN` in the environment or `src-tauri/.env`.
+On first launch the app asks for your own free TMDB key (from https://www.themoviedb.org/settings/api) and walks you through getting one. You can change it later in Preferences > TMDB.
 
 Downloads go to `~/Movies/cardamoi`. Videos you copy into that folder yourself are picked up and added to the library.
 

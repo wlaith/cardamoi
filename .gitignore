@@ -26,6 +26,6 @@ dist-ssr
 # Fetched by scripts/fetch-prowlarr.sh
 src-tauri/vendor/
 
-# Local secrets (TMDB token)
+# Local secrets
 .env
 src-tauri/.env
