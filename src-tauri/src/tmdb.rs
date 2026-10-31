@@ -248,7 +248,8 @@ mod tests {
         let episodes = tmdb.episodes(show.id, 1).await.unwrap();
         assert_eq!(episodes[0].number, 1);
 
-        let film = tmdb.best_match("La bola negra", None, false).await.unwrap().unwrap();
-        assert_eq!(film.original_title, "La bola negra");
+        let parsed = crate::release::parse("La bola negra [The Black Ball] 10bit 4KDS 1080p SVT-AV1-Tritium.mkv");
+        let film = tmdb.best_match(&parsed.title, parsed.year, false).await.unwrap().unwrap();
+        assert_eq!((film.id, film.original_title.as_str()), (1422041, "La bola negra"));
     }
 }

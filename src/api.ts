@@ -59,6 +59,13 @@ export interface Details extends CatalogTitle {
   seasons: Season[];
 }
 
+export interface NameLookup {
+  query: string;
+  season: number | null;
+  episode: number | null;
+  found: CatalogTitle | null;
+}
+
 export interface Episode {
   number: number;
   name: string;
@@ -216,6 +223,7 @@ export type ProwlarrStatus =
 export const api = {
   search: (query: SearchQuery) => invoke<{ results: Found[]; errors: string[] }>("search", { query }),
   catalogSearch: (text: string) => invoke<CatalogTitle[]>("catalog_search", { text }),
+  matchName: (name: string) => invoke<NameLookup>("match_name", { name }),
   titleDetails: (kind: Kind, id: number) => invoke<Details>("title_details", { kind, id }),
   seasonEpisodes: (id: number, season: number) => invoke<Episode[]>("season_episodes", { id, season }),
   prowlarrStatus: () => invoke<ProwlarrStatus>("prowlarr_status"),

@@ -1,4 +1,4 @@
-import { api, episodeLabel, isMpvMissing, magnetName, plainError, type LibraryEntry } from "./api";
+import { api, episodeLabel, isMpvMissing, magnetName, plainError, type CatalogTitle, type LibraryEntry, type NameLookup } from "./api";
 import { nextEpisode, showKey, type LocalEpisode, type Show } from "./library";
 import { go } from "./nav";
 import { announce, hideEntries, refresh, selection, showEntries, startOpening, stopOpening, type Selected } from "./store";
@@ -139,18 +139,28 @@ export async function setManyWatched(eps: LocalEpisode[], watched: boolean) {
   }
 }
 
-export async function addMagnet(link: string): Promise<string | null> {
+/** `title` is what the user confirmed it is on TMDB; `at` is the episode read from its name. */
+export async function addMagnet(
+  link: string,
+  title: CatalogTitle | null = null,
+  at: Pick<NameLookup, "season" | "episode"> | null = null,
+): Promise<string | null> {
+  const show = title?.kind === "tv";
   try {
     await api.addDownload({
-      title: magnetName(link),
-      year: null,
+      title: title?.title ?? magnetName(link),
+      year: title?.year ?? null,
       source: "Magnet link",
       torrentUrl: link,
-      poster: null,
+      poster: title?.poster ?? null,
       singleVideo: false,
+      tmdbId: title?.id ?? null,
+      kind: title?.kind ?? null,
+      season: show ? (at?.season ?? null) : null,
+      episode: show ? (at?.episode ?? null) : null,
     });
     await refresh();
-    announce(`Added "${magnetName(link) || "magnet link"}" to Downloads`);
+    announce(`Added "${title?.title || magnetName(link) || "magnet link"}" to Downloads`);
     return null;
   } catch (e) {
     return plainError(e).message;

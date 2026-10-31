@@ -458,18 +458,37 @@ fn record(state: &AppState, req: &AddRequest, info_hash: &str, magnet: Option<&s
     Ok(id)
 }
 
+async fn lookup(state: &AppState, parsed: &release::Release) -> Option<tmdb::Title> {
+    if parsed.title.is_empty() {
+        return None;
+    }
+    let tv = parsed.season.is_some();
+    (Tmdb { http: state.http.clone() }).best_match(&parsed.title, parsed.year, tv).await.ok().flatten()
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NameLookup {
+    /// The title read from the name, to search with when there's no match.
+    query: String,
+    season: Option<u32>,
+    episode: Option<u32>,
+    found: Option<tmdb::Title>,
+}
+
+#[tauri::command]
+async fn match_name(state: State<'_, AppState>, name: String) -> CmdResult<NameLookup> {
+    let parsed = release::parse(&name);
+    let found = lookup(&state, &parsed).await;
+    Ok(NameLookup { query: parsed.title, season: parsed.season, episode: parsed.episode, found })
+}
+
 async fn identify(state: &AppState, id: i64, parsed: release::Release) {
     let Ok(item) = db::get(&state.db.lock().unwrap(), id) else { return };
     if item.tmdb_id.is_some() {
         return;
     }
-    if parsed.title.is_empty() {
-        return;
-    }
-    let tv = parsed.season.is_some();
-    let Ok(Some(found)) = (Tmdb { http: state.http.clone() }).best_match(&parsed.title, parsed.year, tv).await else {
-        return;
-    };
+    let Some(found) = lookup(state, &parsed).await else { return };
     let kind = match found.kind {
         tmdb::Kind::Movie => "movie",
         tmdb::Kind::Tv => "tv",
@@ -1377,6 +1396,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             search,
             catalog_search,
+            match_name,
             title_details,
             season_episodes,
             prowlarr_status,
