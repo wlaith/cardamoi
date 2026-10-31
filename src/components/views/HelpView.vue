@@ -54,9 +54,9 @@ watch(() => props.topic, scrollToTopic);
         {{ t.title }}
       </button>
     </nav>
-    <div class="max-w-[640px] flex-1 space-y-55 body-02 text-ink-2 selectable">
+    <div class="max-w-[640px] flex-1 space-y-55 text-ink-2 selectable">
       <section id="help-start">
-        <h2 class="mb-4 heading-03 text-ink">Getting started</h2>
+        <h2 class="mb-4 text-heading text-ink">Getting started</h2>
         <p class="mt-4 first-of-type:mt-0">
           Type a film or show into the search field at the top right and press Return. Open a result, pick a release (the
           one marked <strong class="font-semibold text-ink">Best Match</strong> is a safe choice) and press Download. It appears under
@@ -64,7 +64,7 @@ watch(() => props.topic, scrollToTopic);
         </p>
       </section>
       <section id="help-sources">
-        <h2 class="mb-4 heading-03 text-ink">Sources and indexers</h2>
+        <h2 class="mb-4 text-heading text-ink">Sources and indexers</h2>
         <p class="mt-4 first-of-type:mt-0">
           cardamoi looks for releases in its sources. The Internet Archive is built in and only has public domain and
           freely licensed films. For everything else, add indexers to the built-in Prowlarr: open
@@ -81,7 +81,7 @@ watch(() => props.topic, scrollToTopic);
         </p>
       </section>
       <section id="help-files">
-        <h2 class="mb-4 heading-03 text-ink">Where your videos are kept</h2>
+        <h2 class="mb-4 text-heading text-ink">Where your videos are kept</h2>
         <p class="mt-4 first-of-type:mt-0">
           Everything is in the cardamoi folder inside your Movies folder. Video files you put there yourself show up
           in the library within a minute. Use <strong class="font-semibold text-ink">Show in Finder</strong> on any film or episode to go to its file.
@@ -89,7 +89,7 @@ watch(() => props.topic, scrollToTopic);
         </p>
       </section>
       <section id="help-subtitles">
-        <h2 class="mb-4 heading-03 text-ink">Subtitles</h2>
+        <h2 class="mb-4 text-heading text-ink">Subtitles</h2>
         <p class="mt-4 first-of-type:mt-0">
           Subtitles come from OpenSubtitles and Subdl, which each need a free API key. Create an account on
           opensubtitles.com, then add a consumer under your profile to get its key; on subdl.com the key is on your
@@ -98,7 +98,7 @@ watch(() => props.topic, scrollToTopic);
         </p>
       </section>
       <section id="help-playback">
-        <h2 class="mb-4 heading-03 text-ink">Playing videos</h2>
+        <h2 class="mb-4 text-heading text-ink">Playing videos</h2>
         <p class="mt-4 first-of-type:mt-0">
           cardamoi plays videos with mpv. If it isn't installed, install it with Homebrew (<code>brew install mpv</code>),
           or choose <strong class="font-semibold text-ink">Open in System Player</strong> from a video's menu. While a video plays, the display at the
@@ -106,7 +106,7 @@ watch(() => props.topic, scrollToTopic);
         </p>
       </section>
       <section id="help-keys">
-        <h2 class="mb-4 heading-03 text-ink">Keyboard shortcuts</h2>
+        <h2 class="mb-4 text-heading text-ink">Keyboard shortcuts</h2>
         <table class="data-table">
           <tbody>
             <tr v-for="[keys, what] in shortcuts" :key="keys">

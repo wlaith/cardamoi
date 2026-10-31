@@ -167,12 +167,12 @@ function availabilityTag(r: Found) {
               </p>
               <p
                 v-if="adding[r.torrent_url] && !['adding', 'added'].includes(adding[r.torrent_url])"
-                class="truncate label-01 text-error"
+                class="truncate text-small tabular-nums text-error"
                 :title="adding[r.torrent_url]"
               >
                 {{ adding[r.torrent_url] }}
               </p>
-              <p v-if="r.release.season != null && r.release.episode == null" class="label-01">Whole season</p>
+              <p v-if="r.release.season != null && r.release.episode == null" class="text-small tabular-nums">Whole season</p>
             </td>
             <td class="tabular-nums">{{ formatBytes(r.size_bytes) }}</td>
             <td :title="r.seeders != null ? `${r.seeders} ${r.seeders === 1 ? 'person is' : 'people are'} sharing this` : 'Not known'">

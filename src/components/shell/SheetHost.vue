@@ -61,16 +61,16 @@ function onKey(event: KeyboardEvent) {
       <template v-if="sheet.kind === 'alert'">
         <div class="px-34 pt-34 pr-89">
           <p v-if="sheet.buttons.length > 1" class="eyebrow">{{ sheet.buttons[sheet.buttons.length - 1].label }}</p>
-          <h2 id="alert-title" class="mt-2 heading-03">{{ sheet.title }}</h2>
+          <h2 id="alert-title" class="mt-2 text-heading">{{ sheet.title }}</h2>
         </div>
         <div class="px-34 pt-13 pr-[20%]">
-          <p class="selectable body-02 text-ink-2">{{ sheet.message }}</p>
+          <p class="selectable text-ink-2">{{ sheet.message }}</p>
           <template v-if="sheet.details">
-            <button class="mt-4 flex items-center gap-1 label-01 text-link" :aria-expanded="showDetails" @click="showDetails = !showDetails">
+            <button class="mt-4 flex items-center gap-1 text-small tabular-nums text-link" :aria-expanded="showDetails" @click="showDetails = !showDetails">
               <Icon name="chevron-right" :size="12" :class="{ 'rotate-90': showDetails }" />
               Details
             </button>
-            <p v-if="showDetails" class="mt-2 max-h-32 overflow-y-auto bg-background p-2 font-mono text-xs break-all text-ink-2 selectable">
+            <p v-if="showDetails" class="mt-2 max-h-32 overflow-y-auto bg-background p-2 text-small break-all text-ink-2 selectable">
               {{ sheet.details }}
             </p>
           </template>

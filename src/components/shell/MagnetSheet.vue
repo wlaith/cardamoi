@@ -29,8 +29,8 @@ async function add() {
 <template>
   <form @submit.prevent="add">
     <div class="px-4 pt-4 pr-16">
-      <p class="label-01 text-ink-2">Add to library</p>
-      <h2 class="mt-1 heading-03">Add a magnet link</h2>
+      <p class="text-small tabular-nums text-ink-2">Add to library</p>
+      <h2 class="mt-1 text-heading">Add a magnet link</h2>
     </div>
     <div class="px-4 pt-6">
       <p>It downloads into your library. The poster is matched from its name.</p>
@@ -38,7 +38,7 @@ async function add() {
       <input
         id="magnet-link"
         v-model="link"
-        class="field font-mono"
+        class="field"
         placeholder="magnet:?xt=urn:btih:…"
         autocomplete="off"
         spellcheck="false"

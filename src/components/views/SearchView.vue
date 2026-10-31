@@ -69,8 +69,8 @@ function open(t: CatalogTitle) {
 <template>
   <div v-if="!query.trim()" class="grid h-full place-items-center p-34">
     <div class="max-w-md">
-      <p class="empty-state">Search films and TV shows</p>
-      <p class="mt-4 body-02 text-ink-2">Type a title in the search field at the top of the window, then press Return.</p>
+      <p class="text-heading">Search films and TV shows</p>
+      <p class="mt-4 text-ink-2">Type a title in the search field at the top of the window, then press Return.</p>
     </div>
   </div>
 
@@ -87,7 +87,7 @@ function open(t: CatalogTitle) {
     <Loader v-if="searching" :size="55" text="Searching the catalog" class="py-55" />
     <ErrorNote v-else-if="error" :error="error" class="max-w-xl" />
     <div v-else-if="!titles.length" class="py-8">
-      <p class="heading-03">No results</p>
+      <p class="text-heading">No results</p>
       <p class="mt-2 text-ink-2">Try the original title, or fewer words.</p>
     </div>
 
@@ -116,7 +116,7 @@ function open(t: CatalogTitle) {
       </ul>
     </section>
 
-    <p class="helper-text-01">
+    <p class="text-ink-2">
       Film and show information and images come from TMDB. This product uses the TMDB API but is not endorsed or
       certified by TMDB.
     </p>

@@ -76,8 +76,8 @@ function status(e: LibraryEntry) {
     </div>
 
     <div v-if="!rows.length" class="py-16">
-      <p class="empty-state">No downloads</p>
-      <p class="mt-4 body-02 text-ink-2">Find something to watch with the search field at the top of the window.</p>
+      <p class="text-heading">No downloads</p>
+      <p class="mt-4 text-ink-2">Find something to watch with the search field at the top of the window.</p>
     </div>
 
     <ul v-else class="pt-6" aria-label="Downloads" @keydown="arrowNav">
@@ -90,7 +90,7 @@ function status(e: LibraryEntry) {
             <Icon v-if="state(e) === 'failed'" name="error-filled" class="text-alarm" label="Failed" />
           </p>
           <ProgressBar class="mt-2" :value="e.progress" :state="state(e)" :label="`${name(e)} progress`" />
-          <p class="mt-2 truncate helper-text-01" :class="{ '!text-error': state(e) === 'failed' }" :title="e.error ?? ''">
+          <p class="mt-2 truncate text-ink-2" :class="{ '!text-error': state(e) === 'failed' }" :title="e.error ?? ''">
             {{ status(e) }}
           </p>
         </div>

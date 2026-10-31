@@ -20,7 +20,7 @@ defineProps<{ size?: number; light?: boolean }>();
   position: absolute;
   inset: 0 auto 0 0;
   width: 40%;
-  background: var(--c-red);
+  background: var(--c-mark);
   animation: travel 1s linear infinite;
 }
 

@@ -11,7 +11,7 @@ defineProps<{ label: string }>();
     <div class="size-12 shrink-0"><Loader :size="48" /></div>
     <div class="min-w-0 flex-1">
       <p class="eyebrow">Opening</p>
-      <p class="truncate heading-compact-01">{{ label }}</p>
+      <p class="truncate font-semibold">{{ label }}</p>
       <p class="truncate text-ink-2">Plays in its own window.</p>
     </div>
     <button class="btn-icon self-start" aria-label="Dismiss" @click="stopOpening()"><Icon name="close" /></button>

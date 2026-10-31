@@ -141,8 +141,8 @@ async function remove(s: SourceRow) {
             <input type="checkbox" class="toggle" checked disabled aria-label="Internet Archive is always on" /> On
           </label>
           <div class="min-w-0 flex-1">
-            <p class="heading-compact-01">Internet Archive</p>
-            <p class="mt-1 truncate label-01 text-ink-2">Built in · public domain and freely licensed films</p>
+            <p class="font-semibold">Internet Archive</p>
+            <p class="mt-1 truncate text-small tabular-nums text-ink-2">Built in · public domain and freely licensed films</p>
           </div>
           <span class="tag tag-blue w-36 justify-center">Built in</span>
           <span class="w-8" />
@@ -153,8 +153,8 @@ async function remove(s: SourceRow) {
               <input type="checkbox" class="toggle" checked disabled aria-label="Prowlarr is always on" /> On
             </label>
             <div class="min-w-0 flex-1">
-              <p class="heading-compact-01">Prowlarr</p>
-              <p class="mt-1 truncate label-01 text-ink-2">Built in · searches the indexers you add to it</p>
+              <p class="font-semibold">Prowlarr</p>
+              <p class="mt-1 truncate text-small tabular-nums text-ink-2">Built in · searches the indexers you add to it</p>
             </div>
             <span class="w-36">
               <span v-if="prowlarr.state === 'starting'" class="tag gap-2"><Spinner :size="12" /> Starting</span>
@@ -172,8 +172,8 @@ async function remove(s: SourceRow) {
             {{ s.enabled ? "On" : "Off" }}
           </label>
           <div class="min-w-0 flex-1">
-            <p class="heading-compact-01" :class="{ 'text-ink-2': !s.enabled }">{{ s.name }}</p>
-            <p class="mt-1 truncate label-01 text-ink-2 selectable" :title="s.url">{{ s.url }}</p>
+            <p class="font-semibold" :class="{ 'text-ink-2': !s.enabled }">{{ s.name }}</p>
+            <p class="mt-1 truncate text-small tabular-nums text-ink-2 selectable" :title="s.url">{{ s.url }}</p>
           </div>
           <span class="w-36"><span class="tag" :class="s.enabled ? 'tag-green' : ''">{{ s.enabled ? "On" : "Off" }}</span></span>
           <button class="btn-icon btn-sm" :aria-label="`More for ${s.name}`" aria-haspopup="menu" @click="sourceMenu($event, s)">

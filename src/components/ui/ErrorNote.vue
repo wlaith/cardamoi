@@ -17,11 +17,11 @@ const open = ref(false);
         {{ shown.message }}
       </p>
       <template v-if="shown.details">
-        <button class="mt-1 flex items-center gap-1 label-01 text-link" :aria-expanded="open" @click="open = !open">
+        <button class="mt-1 flex items-center gap-1 text-small tabular-nums text-link" :aria-expanded="open" @click="open = !open">
           <Icon name="chevron-right" :size="12" :class="{ 'rotate-90': open }" />
           Details
         </button>
-        <p v-if="open" class="mt-1 font-mono text-xs break-all text-ink-2 selectable">{{ shown.details }}</p>
+        <p v-if="open" class="mt-1 text-small break-all text-ink-2 selectable">{{ shown.details }}</p>
       </template>
     </div>
     <slot />

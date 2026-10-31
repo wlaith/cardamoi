@@ -44,8 +44,8 @@ const rows = computed(() =>
 
 <template>
   <div class="px-4 pt-4 pr-16">
-    <p class="label-01 text-ink-2">Get info</p>
-    <h2 class="mt-1 heading-03">{{ videoLabel(ep) }}</h2>
+    <p class="text-small tabular-nums text-ink-2">Get info</p>
+    <h2 class="mt-1 text-heading">{{ videoLabel(ep) }}</h2>
   </div>
   <div class="flex gap-6 px-4 pt-6">
     <img v-if="e.poster" :src="e.poster" alt="" class="poster-frame h-[150px] w-[100px] shrink-0 object-cover" />

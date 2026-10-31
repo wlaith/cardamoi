@@ -48,7 +48,7 @@ function moreMenu() {
     <img v-if="still" :src="still" alt="" class="poster-frame aspect-video w-[320px] shrink-0 object-cover" />
     <div class="min-w-0 flex-1">
       <p v-if="overview" class="max-w-[72ch] text-ink selectable">{{ overview }}</p>
-      <p class="mt-4 label-01 text-ink-2">{{ meta }}</p>
+      <p class="mt-4 text-small tabular-nums text-ink-2">{{ meta }}</p>
       <div class="mt-6 flex flex-wrap items-center gap-x-2 gap-y-2">
         <button v-if="v.playable" class="btn btn-primary" @click="play(local, v.watched)">
           {{ v.resumeAt != null ? "Continue" : v.watched ? "Play again" : "Play" }} <Icon name="play" />
