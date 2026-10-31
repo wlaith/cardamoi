@@ -1,0 +1,49 @@
+:root,
+[data-theme="ink"],
+[data-theme="paper"] {
+  --c-mark: var(--c-red);
+  --c-on-mark: var(--c-on-red);
+  --c-dim: #000000;
+}
+
+[data-theme="paper"] {
+  --c-dim: #f1eee8;
+}
+
+[data-theme="gray"] {
+  --c-surface: #f5f5f7;
+  --c-surface-raised: #ffffff;
+  --c-ink: #1d1d1f;
+  --c-ink-muted: #636366;
+  --c-line: #d2d2d7;
+  --c-red: #1d1d1f;
+  --c-red-deep: #3a3a3c;
+  --c-red-text: #b8190a;
+  --c-red-tint: #ececef;
+  --c-on-red: #f5f5f7;
+  --c-ultramarine: #2230d9;
+  --c-on-ultramarine: #ffffff;
+  --c-husk: #d4d8ad;
+  --c-focus-ring: #2230d9;
+  --c-mark: #2230d9;
+  --c-on-mark: #ffffff;
+  --c-dim: #f5f5f7;
+  --brand-paper: #f5f5f7;
+  color-scheme: light;
+}
+
+:root {
+  --dur-1: 89ms;
+  --dur-2: 144ms;
+  --dur-3: 233ms;
+  --dur-4: 377ms;
+  --dur-5: 610ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: linear(
+    0, 0.042 2.2%, 0.157 4.6%, 0.493 10.4%, 0.692 14.4%, 0.843 18.4%, 0.95 22.6%, 1.019 27%, 1.057 31.6%,
+    1.069 36.2%, 1.064 41%, 1.034 50.6%, 1.006 61.4%, 0.996 72%, 0.998 86%, 1
+  );
+  --ease: var(--ease-out);
+  --dur-fast: var(--dur-1);
+  --dur: var(--dur-2);
+}

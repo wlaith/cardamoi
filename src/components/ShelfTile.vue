@@ -8,7 +8,8 @@ import { filmLine, showLine } from "../status";
 import { openMenu } from "../ui";
 import PosterTile from "./ui/PosterTile.vue";
 
-const props = defineProps<{ item: Shelf }>();
+const props = defineProps<{ item: Shelf; checked?: boolean }>();
+const emit = defineEmits<{ pick: [event: MouseEvent] }>();
 
 const film = computed(() => (props.item.kind === "film" ? filmVideo(props.item.entry) : null));
 const show = computed(() => (props.item.kind === "show" ? props.item.show : null));
@@ -39,9 +40,10 @@ const fill = computed(() => {
   return props.item.entry.progress;
 });
 
-function select() {
+function select(event?: MouseEvent) {
   if (show.value) selection.value = { kind: "show", show: show.value };
   else if (film.value) selection.value = { kind: "video", ep: film.value };
+  if (event) emit("pick", event);
 }
 
 function open() {
@@ -57,7 +59,7 @@ function menu(event: MouseEvent) {
     const entry = props.item.entry;
     openMenu(event, [
       { label: "Show in Downloads", action: open },
-      { label: "Cancel Download…", action: () => moveToTrash(entry), danger: true },
+      { label: "Cancel Download", action: () => moveToTrash(entry), danger: true },
     ]);
   }
 }
@@ -73,6 +75,7 @@ function menu(event: MouseEvent) {
     :played="film ? (film.video.resumeAt != null ? playedShare(film.video) : 0) : show ? watchedShare(show) : 0"
     :fill="fill"
     :selected="selected"
+    :checked="checked"
     :playable="!!toPlay?.video.playable"
     @select="select"
     @open="open"

@@ -174,7 +174,7 @@ onUnmounted(() => {
     <div class="overflow-y-auto p-4">
       <p v-if="panelError" class="mb-2 text-error">{{ panelError }}</p>
 
-      <h3 class="label-01 font-semibold text-ink-2">On this file</h3>
+      <h3 class="text-small tabular-nums font-semibold text-ink-2">On this file</h3>
       <ul v-if="playing" class="mt-1 border-y border-subtle">
         <li v-for="t in subTracks" :key="t.id">
           <button
@@ -205,7 +205,7 @@ onUnmounted(() => {
             <span class="text-ink-2">· {{ s.source === "torrent" ? "came with the download" : s.label }}</span>
           </li>
         </ul>
-        <p class="mt-1 label-01 text-ink-2">
+        <p class="mt-1 text-small tabular-nums text-ink-2">
           {{ saved.length ? "" : "No subtitle files yet. " }}Subtitles inside the video show up here while it plays.
         </p>
       </template>
@@ -213,14 +213,14 @@ onUnmounted(() => {
       <div v-if="playing && activeTrack" class="mt-3 flex flex-wrap items-center gap-1.5">
         <span>Timing:</span>
         <button class="btn-hud w-6 px-0" aria-label="Show subtitles earlier" @click="command(['add', 'sub-delay', -0.5])">−</button>
-        <span class="min-w-24 text-center font-bold" aria-live="polite">{{ timing(player!.subDelay) }}</span>
+        <span class="min-w-24 text-center font-semibold" aria-live="polite">{{ timing(player!.subDelay) }}</span>
         <button class="btn-hud w-6 px-0" aria-label="Show subtitles later" @click="command(['add', 'sub-delay', 0.5])">+</button>
         <button v-if="Math.abs(player!.subDelay) >= 0.05" class="btn-hud" @click="command(['set', 'sub-delay', 0])">Reset</button>
-        <button v-if="results.length" class="ml-auto label-01 text-link hover:underline" @click="tryNext">Still off? Try the next match</button>
+        <button v-if="results.length" class="ml-auto text-small tabular-nums text-link hover:underline" @click="tryNext">Still off? Try the next match</button>
       </div>
 
       <div class="mt-4 flex flex-wrap items-center gap-2">
-        <h3 class="label-01 font-semibold text-ink-2">Find more</h3>
+        <h3 class="text-small tabular-nums font-semibold text-ink-2">Find more</h3>
         <select v-model="language" aria-label="Language" class="popup-hud" @change="search">
           <optgroup label="Your languages">
             <option v-for="code in languages" :key="code" :value="code">{{ languageName(code) }}</option>
@@ -252,13 +252,13 @@ onUnmounted(() => {
                 </span>
                 <span class="truncate" :title="r.release">{{ r.release || "Unnamed release" }}</span>
               </p>
-              <p class="mt-0.5 flex flex-wrap gap-x-2 label-01 text-ink-2">
+              <p class="mt-0.5 flex flex-wrap gap-x-2 text-small tabular-nums text-ink-2">
                 <span>{{ languageName(r.lang) }}</span>
                 <span v-if="r.hearingImpaired">CC (describes sounds)</span>
                 <span>{{ r.provider === "opensubtitles" ? "OpenSubtitles" : "Subdl" }}</span>
                 <span v-if="r.downloads">{{ r.downloads.toLocaleString() }} downloads</span>
               </p>
-              <p v-if="fetching[keyOf(r)] && !['loading', 'done'].includes(fetching[keyOf(r)])" class="mt-1 label-01 text-error">
+              <p v-if="fetching[keyOf(r)] && !['loading', 'done'].includes(fetching[keyOf(r)])" class="mt-1 text-small tabular-nums text-error">
                 {{ fetching[keyOf(r)] }}
               </p>
             </div>
@@ -268,10 +268,10 @@ onUnmounted(() => {
             </button>
           </li>
         </ul>
-        <button v-if="results.length > 3" class="mt-2 label-01 text-ink-2 hover:text-ink" :aria-expanded="showAll" @click="showAll = !showAll">
+        <button v-if="results.length > 3" class="mt-2 text-small tabular-nums text-ink-2 hover:text-ink" :aria-expanded="showAll" @click="showAll = !showAll">
           {{ showAll ? "Show Fewer" : `Show ${results.length - 3} More` }}
         </button>
-        <p v-if="quota" class="mt-3 label-01" :class="quota.remaining <= 3 ? 'text-error' : 'text-ink-2'">
+        <p v-if="quota" class="mt-3 text-small tabular-nums" :class="quota.remaining <= 3 ? 'text-error' : 'text-ink-2'">
           OpenSubtitles: {{ quota.remaining }} {{ quota.remaining === 1 ? "download" : "downloads" }} left today
         </p>
       </template>

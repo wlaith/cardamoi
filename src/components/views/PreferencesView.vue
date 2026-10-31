@@ -1,35 +1,31 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { replace, type PreferencesPane } from "../../nav";
 import GeneralPane from "../preferences/GeneralPane.vue";
 import SourcesPane from "../preferences/SourcesPane.vue";
 import SubtitlesPane from "../preferences/SubtitlesPane.vue";
 import PageHeader from "../ui/PageHeader.vue";
+import TabList from "../ui/TabList.vue";
 
-defineProps<{ pane: PreferencesPane }>();
+const props = defineProps<{ pane: PreferencesPane }>();
 
 const panes: { id: PreferencesPane; label: string }[] = [
   { id: "general", label: "General" },
   { id: "subtitles", label: "Subtitles" },
   { id: "sources", label: "Sources" },
 ];
+
+const current = computed<PreferencesPane | null>({
+  get: () => props.pane,
+  set: (pane) => pane && replace({ name: "preferences", pane }),
+});
 </script>
 
 <template>
   <div class="space-y-55 p-34">
     <div class="space-y-21">
       <PageHeader title="Preferences" subtitle="Where cardamoi looks for releases, subtitles and playback." />
-      <nav class="tabs" role="tablist" aria-label="Preferences">
-        <button
-          v-for="p in panes"
-          :key="p.id"
-          class="tab"
-          role="tab"
-          :aria-selected="pane === p.id"
-          @click="replace({ name: 'preferences', pane: p.id })"
-        >
-          {{ p.label }}
-        </button>
-      </nav>
+      <TabList v-model="current" :items="panes" label="Preferences" />
     </div>
     <GeneralPane v-if="pane === 'general'" />
     <SubtitlesPane v-else-if="pane === 'subtitles'" />

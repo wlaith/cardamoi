@@ -39,6 +39,10 @@ export function closeSheet(value: string | null = null) {
   if (open?.kind === "alert") open.resolve(value);
 }
 
+export const palette = ref(false);
+
+export const downloadsOpen = ref(false);
+
 export type Hud = { kind: "captions"; ep: LocalEpisode } | { kind: "nowPlaying" };
 export const hud = ref<Hud | null>(null);
 

@@ -86,7 +86,7 @@ const signingIn = computed(
         <input v-model="settings.autoFetch" type="checkbox" class="toggle" />
         <span>
           Download subtitles automatically while a film downloads
-          <span class="mt-1 block helper-text-01">
+          <span class="mt-1 block text-ink-2">
             Gets the best match in your first language. They only show on screen when the film isn't in one of your
             languages.
           </span>

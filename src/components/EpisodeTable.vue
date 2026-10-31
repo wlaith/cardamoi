@@ -86,8 +86,8 @@ function synopsis(row: EpisodeRowData) {
             <div v-else class="poster-frame aspect-video w-24" />
           </td>
           <td class="max-w-0">
-            <p class="truncate heading-compact-01 text-ink" :title="row.name">{{ row.name }}</p>
-            <p v-if="synopsis(row)" class="mt-1 truncate label-01" :title="row.overview">{{ synopsis(row) }}</p>
+            <p class="truncate font-semibold text-ink" :title="row.name">{{ row.name }}</p>
+            <p v-if="synopsis(row)" class="mt-1 truncate text-small tabular-nums" :title="row.overview">{{ synopsis(row) }}</p>
           </td>
           <td class="tabular-nums">{{ row.airDate ?? "" }}</td>
           <td>
