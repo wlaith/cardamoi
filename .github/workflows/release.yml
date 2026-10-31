@@ -158,9 +158,13 @@ jobs:
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # linuxdeploy's bundled strip can't read Prowlarr's newer .NET libraries;
+          # the app binary is already stripped by the release profile.
+          NO_STRIP: ${{ runner.os == 'Linux' }}
         with:
           releaseId: ${{ needs.create-release.outputs.id }}
-          args: --target ${{ matrix.target }}
+          # Verbose so bundler failures (linuxdeploy especially) show their cause.
+          args: --target ${{ matrix.target }} --verbose
           uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
 
   # Only goes public once every platform uploaded; a failed leg leaves a draft.
