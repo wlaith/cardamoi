@@ -3,8 +3,14 @@ name: release
 on:
   push:
     tags: ['v*']
-  # Builds every platform from any branch as workflow artifacts, without releasing.
+  # Builds from any branch as workflow artifacts, without releasing.
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build
+        type: choice
+        default: all
+        options: [all, osx-arm64, osx-x64, linux-x64, windows-x64]
 
 permissions: {}
 
@@ -79,8 +85,26 @@ jobs:
           [ -n "$id" ] || { echo "::error::couldn't create the release"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
+  platforms:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.pick.outputs.include }}
+    steps:
+      - id: pick
+        env:
+          PLATFORM: ${{ inputs.platform || 'all' }}
+        # The oldest supported Ubuntu keeps the glibc floor low for the AppImage.
+        run: |
+          all='[
+            {"os": "macos-latest", "target": "aarch64-apple-darwin", "prowlarr": "osx-arm64"},
+            {"os": "macos-latest", "target": "x86_64-apple-darwin", "prowlarr": "osx-x64"},
+            {"os": "ubuntu-22.04", "target": "x86_64-unknown-linux-gnu", "prowlarr": "linux-x64"},
+            {"os": "windows-latest", "target": "x86_64-pc-windows-msvc", "prowlarr": "windows-x64"}
+          ]'
+          echo "include=$(jq -c --arg p "$PLATFORM" 'map(select($p == "all" or .prowlarr == $p))' <<<"$all")" >> "$GITHUB_OUTPUT"
+
   build:
-    needs: create-release
+    needs: [create-release, platforms]
     # Runs after create-release, or on its own when that was skipped by a manual run.
     if: ${{ !failure() && !cancelled() }}
     permissions:
@@ -88,20 +112,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            prowlarr: osx-arm64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            prowlarr: osx-x64
-          # The oldest supported runner keeps the glibc floor low for the AppImage.
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            prowlarr: linux-x64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            prowlarr: windows-x64
+        include: ${{ fromJSON(needs.platforms.outputs.include) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
