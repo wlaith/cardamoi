@@ -14,6 +14,7 @@ import ErrorNote from "../ui/ErrorNote.vue";
 import Icon from "../ui/Icon.vue";
 import ProgressBar from "../ui/ProgressBar.vue";
 import SectionHeader from "../ui/SectionHeader.vue";
+import TabList from "../ui/TabList.vue";
 import Loader from "../ui/Loader.vue";
 import Spinner from "../ui/Spinner.vue";
 
@@ -161,17 +162,17 @@ watch(
 
       <div class="flex gap-34">
         <img v-if="shown.poster" :src="shown.poster" alt="" class="poster-frame h-[300px] w-[200px] shrink-0 object-cover" />
-        <div v-else class="poster-frame grid h-[300px] w-[200px] shrink-0 place-items-center p-4 text-center heading-03 text-ink-2">
+        <div v-else class="poster-frame grid h-[300px] w-[200px] shrink-0 place-items-center p-4 text-center text-heading text-ink-2">
           {{ shown.title }}
         </div>
 
         <div class="min-w-0 flex-1 space-y-4">
-          <h1 class="heading-07 selectable">{{ shown.title }}</h1>
+          <h1 class="text-title selectable">{{ shown.title }}</h1>
           <div class="flex flex-wrap items-center gap-2">
             <span v-for="g in details?.genres ?? []" :key="g" class="tag tag-blue">{{ g }}</span>
             <span class="text-ink-2">{{ meta }}</span>
           </div>
-          <p v-if="shown.overview" class="max-w-[80ch] body-02 text-ink-2 selectable">{{ shown.overview }}</p>
+          <p v-if="shown.overview" class="max-w-[80ch] text-ink-2 selectable">{{ shown.overview }}</p>
           <ErrorNote v-if="loadError" :error="loadError" class="max-w-xl" />
 
           <div v-if="title.kind === 'tv'" class="flex flex-wrap items-center gap-4 pt-2">
@@ -186,7 +187,7 @@ watch(
             <button v-if="show" ref="more" class="btn-icon size-12" aria-label="More" aria-haspopup="menu" @click="moreMenu">
               <Icon name="overflow" />
             </button>
-            <p v-if="next?.video.resumeAt != null" class="w-full helper-text-01">{{ timeLeft(next.video) }}</p>
+            <p v-if="next?.video.resumeAt != null" class="w-full text-ink-2">{{ timeLeft(next.video) }}</p>
           </div>
 
           <template v-else-if="filmEntry">
@@ -203,14 +204,14 @@ watch(
               </button>
               <button v-else class="btn btn-danger-ghost btn-lg" @click="moveToTrash(filmEntry)">Cancel download <Icon name="trash" /></button>
             </div>
-            <p v-if="film?.video.resumeAt != null" class="helper-text-01">{{ timeLeft(film.video) }}</p>
+            <p v-if="film?.video.resumeAt != null" class="text-ink-2">{{ timeLeft(film.video) }}</p>
             <div v-if="filmEntry.status !== 'done'" class="max-w-xl">
               <ProgressBar
                 :value="filmEntry.progress"
                 :state="filmEntry.status === 'paused' ? 'paused' : filmEntry.status === 'error' ? 'failed' : 'active'"
                 label="Download progress"
               />
-              <p class="mt-2 helper-text-01">{{ filmLine(filmEntry).text }}</p>
+              <p class="mt-2 text-ink-2">{{ filmLine(filmEntry).text }}</p>
             </div>
           </template>
 
@@ -242,18 +243,13 @@ watch(
 
     <section v-else-if="details" class="space-y-21" aria-label="Episodes">
       <div class="flex flex-wrap items-center gap-4">
-        <div v-if="details.seasons.length <= 8" class="tabs flex-1" role="tablist" aria-label="Seasons">
-          <button
-            v-for="s in details.seasons"
-            :key="s.number"
-            class="tab"
-            role="tab"
-            :aria-selected="season === s.number"
-            @click="season = s.number"
-          >
-            {{ s.name }}
-          </button>
-        </div>
+        <TabList
+          v-if="details.seasons.length <= 8"
+          v-model="season"
+          :items="details.seasons.map((s) => ({ id: s.number, label: s.name }))"
+          label="Seasons"
+          class="flex-1"
+        />
         <div v-else class="flex-1">
           <select v-model="season" class="select w-[240px]" aria-label="Season">
             <option v-for="s in details.seasons" :key="s.number" :value="s.number">{{ s.name }}</option>
