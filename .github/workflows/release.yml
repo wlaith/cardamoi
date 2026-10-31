@@ -3,6 +3,8 @@ name: release
 on:
   push:
     tags: ['v*']
+  # Builds every platform from any branch as workflow artifacts, without releasing.
+  workflow_dispatch:
 
 permissions: {}
 
@@ -19,6 +21,7 @@ env:
 
 jobs:
   verify:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -48,6 +51,7 @@ jobs:
 
   create-release:
     needs: verify
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -75,6 +79,8 @@ jobs:
 
   build:
     needs: create-release
+    # Runs after create-release, or on its own when that was skipped by a manual run.
+    if: ${{ !failure() && !cancelled() }}
     permissions:
       contents: write
     strategy:
@@ -141,10 +147,12 @@ jobs:
         with:
           releaseId: ${{ needs.create-release.outputs.id }}
           args: --target ${{ matrix.target }}
+          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
 
   # Only goes public once every platform uploaded; a failed leg leaves a draft.
   publish:
     needs: [create-release, build]
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
