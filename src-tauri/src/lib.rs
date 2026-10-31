@@ -7,6 +7,7 @@ mod release;
 mod sources;
 mod stream;
 mod subtitles;
+mod links;
 mod tmdb;
 
 use std::{
@@ -1352,11 +1353,17 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // On Windows and Linux a clicked magnet link starts a second copy; this hands the link to the first.
+    #[cfg(any(windows, target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| links::focus_main(app)));
+    builder
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let state = init_state(app.handle())?;
             app.manage(state);
+            links::setup(app);
             tauri::async_runtime::spawn(auto_fetch_subtitles(app.handle().clone()));
             resume_resolving(app.handle());
             tauri::async_runtime::spawn(identify_unmatched(app.handle().clone()));
@@ -1403,7 +1410,10 @@ pub fn run() {
             list_subtitles,
             search_subtitles,
             download_subtitle,
-            reveal
+            reveal,
+            links::take_pending_magnet,
+            links::magnet_handler_is_us,
+            links::make_magnet_handler
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

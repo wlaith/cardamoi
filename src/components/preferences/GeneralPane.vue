@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { api } from "../../api";
 import { checkFolder, openFolder } from "../../commands";
 import { theme, type Theme } from "../../store";
@@ -25,7 +25,34 @@ function onThemeKey(event: KeyboardEvent) {
 const autoplayNext = ref<boolean | null>(null);
 const error = ref<unknown>(null);
 
+const magnetIsUs = ref<boolean | null>(null);
+const magnetSettingsOpened = ref(false);
+const magnetError = ref<unknown>(null);
+
+async function checkMagnet() {
+  try {
+    magnetIsUs.value = await api.magnetHandlerIsUs();
+    if (magnetIsUs.value) magnetSettingsOpened.value = false;
+  } catch (e) {
+    magnetError.value = e;
+  }
+}
+
+async function useForMagnets() {
+  try {
+    magnetSettingsOpened.value = await api.makeMagnetHandler();
+    magnetError.value = null;
+    await checkMagnet();
+  } catch (e) {
+    magnetError.value = e;
+  }
+}
+
+// Focus picks up a change made in the system's own settings window.
+onUnmounted(() => window.removeEventListener("focus", checkMagnet));
 onMounted(async () => {
+  window.addEventListener("focus", checkMagnet);
+  checkMagnet();
   try {
     autoplayNext.value = (await api.playbackSettings()).autoplayNext;
   } catch (e) {
@@ -77,6 +104,24 @@ async function save() {
         <button class="btn btn-secondary" @click="openFolder">Open folder <Icon name="folder" /></button>
         <button class="btn btn-ghost" @click="checkFolder">Check for new videos <Icon name="renew" /></button>
       </div>
+    </section>
+
+    <section class="space-y-21" aria-labelledby="magnet-heading">
+      <SectionHeader
+        id="magnet-heading"
+        title="Magnet links"
+        subtitle="Clicking a magnet link in your browser opens it here, ready to download."
+      />
+      <p v-if="magnetIsUs">cardamoi opens magnet links.</p>
+      <div v-else-if="magnetIsUs === false" class="space-y-8">
+        <button class="btn btn-secondary" @click="useForMagnets">
+          Use cardamoi for magnet links <Icon name="magnet" />
+        </button>
+        <p v-if="magnetSettingsOpened" class="text-ink-2">
+          Windows needs you to finish this in Settings: choose cardamoi for MAGNET in the window that opened.
+        </p>
+      </div>
+      <ErrorNote v-if="magnetError" :error="magnetError" />
     </section>
 
     <section class="space-y-21" aria-labelledby="playback-heading">

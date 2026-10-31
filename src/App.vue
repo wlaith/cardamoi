@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { listen } from "@tauri-apps/api/event";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { api } from "./api";
 import {
   checkFolder,
   getInfo,
@@ -141,7 +142,16 @@ const onBlur = () => setActive(false);
 
 let stopSync: () => void = () => {};
 const unlistenMenu = listen<string>("menu", (event) => onMenu(event.payload));
+
+// A magnet link clicked in the browser. It replaces any open sheet: the click was on purpose.
+async function openPendingMagnet() {
+  const link = await api.takePendingMagnet().catch(() => null);
+  if (link) sheet.value = { kind: "magnet", link };
+}
+const unlistenMagnet = listen("open-magnet", openPendingMagnet);
+
 onMounted(() => {
+  openPendingMagnet();
   document.documentElement.classList.toggle("mac", navigator.userAgent.includes("Mac"));
   stopSync = startSync();
   window.addEventListener("keydown", onKey);
@@ -152,6 +162,7 @@ onMounted(() => {
 onUnmounted(() => {
   stopSync();
   unlistenMenu.then((stop) => stop());
+  unlistenMagnet.then((stop) => stop());
   window.removeEventListener("keydown", onKey);
   window.removeEventListener("paste", onPaste);
   window.removeEventListener("focus", onFocus);

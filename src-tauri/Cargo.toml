@@ -32,6 +32,7 @@ axum = { version = "0.8", default-features = false, features = ["http1", "tokio"
 tokio-util = { version = "0.7", features = ["io"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 trash = "5"
+tauri-plugin-deep-link = "2"
 
 [profile.release]
 codegen-units = 1
@@ -39,3 +40,9 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+[target.'cfg(any(windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"
