@@ -27,7 +27,8 @@ if [ "${TARGET%-*}" = linux ]; then
   # Optional tracing and debugger libraries. The AppImage bundler can't resolve
   # their dependencies (liblttng-ust.so.0 isn't on current distros), and Prowlarr
   # runs without them.
-  rm -f "$DEST/libcoreclrtraceptprovider.so" "$DEST/libmscordbi.so"
+  # Prowlarr.Update/ carries its own copies.
+  find "$DEST" \( -name libcoreclrtraceptprovider.so -o -name libmscordbi.so \) -delete
 fi
 
 if [ "$(uname)" = Darwin ]; then
