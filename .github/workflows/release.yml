@@ -14,8 +14,9 @@ on:
 
 permissions: {}
 
+# One release per tag at a time; manual builds never queue behind each other.
 concurrency:
-  group: release-${{ github.ref }}
+  group: ${{ github.event_name == 'push' && format('release-{0}', github.ref) || format('build-{0}', github.run_id) }}
   cancel-in-progress: false
 
 defaults:
