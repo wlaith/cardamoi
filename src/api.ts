@@ -46,6 +46,13 @@ export interface CatalogTitle {
   rating: number | null;
 }
 
+export interface TmdbStatus {
+  state: "missing" | "ok" | "rejected";
+  kind: "token" | "key" | null;
+  checkedAt: number | null;
+  onboardingSeen: boolean;
+}
+
 export interface Season {
   number: number;
   name: string;
@@ -226,6 +233,10 @@ export const api = {
   matchName: (name: string) => invoke<NameLookup>("match_name", { name }),
   titleDetails: (kind: Kind, id: number) => invoke<Details>("title_details", { kind, id }),
   seasonEpisodes: (id: number, season: number) => invoke<Episode[]>("season_episodes", { id, season }),
+  tmdbStatus: () => invoke<TmdbStatus>("tmdb_status"),
+  saveTmdbKey: (key: string, skipCheck = false) => invoke<number>("save_tmdb_key", { key, skipCheck }),
+  removeTmdbKey: () => invoke<void>("remove_tmdb_key"),
+  markOnboardingSeen: () => invoke<void>("mark_onboarding_seen"),
   prowlarrStatus: () => invoke<ProwlarrStatus>("prowlarr_status"),
   openProwlarr: () => invoke<void>("open_prowlarr"),
   listSources: () => invoke<SourceRow[]>("list_sources"),
@@ -276,6 +287,10 @@ export function errorMessage(e: unknown): string {
 
 const KNOWN_FAILURES: [RegExp, string][] = [
   [/no space left|disk full/i, "The disk is full. Free up some space and try again."],
+  [/tmdb:missing/, "Add a TMDB key in Preferences › TMDB to look up films and shows."],
+  [/tmdb:rejected/, "TMDB turned down your key. Update it in Preferences › TMDB."],
+  [/tmdb:format/, "This doesn't look like a TMDB key. Copy the API Read Access Token from your TMDB API settings."],
+  [/tmdb:unreachable/, "Couldn't reach TMDB to check the key. Check that you're online."],
   [/\b(401|403)\b|unauthori[sz]ed|forbidden|invalid api ?key/i, "The API key was turned down. Check it in Preferences."],
   [/\b429\b|too many requests|quota/i, "The service is busy or its daily limit is used up. Try again later."],
   [

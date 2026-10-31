@@ -13,7 +13,10 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::{Path, PathBuf},
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -46,6 +49,7 @@ struct AppState {
     subtitles: subtitles::Subtitles,
     resolving: Mutex<HashMap<i64, Resolving>>,
     folder_sizes: Mutex<HashMap<PathBuf, u64>>,
+    tmdb_rejected: AtomicBool,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -108,19 +112,115 @@ async fn search(state: State<'_, AppState>, query: SearchQuery) -> CmdResult<Sea
     Ok(response)
 }
 
-#[tauri::command]
-async fn catalog_search(state: State<'_, AppState>, text: String) -> CmdResult<Vec<tmdb::Title>> {
-    Tmdb { http: state.http.clone() }.search(text.trim()).await.map_err(err)
+fn tmdb(state: &AppState) -> anyhow::Result<Tmdb> {
+    let saved = db::get_setting(&state.db.lock().unwrap(), "tmdb_key")?;
+    let auth = saved.as_deref().and_then(tmdb::parse_key).context("tmdb:missing")?;
+    Ok(Tmdb { http: state.http.clone(), auth })
+}
+
+fn tmdb_outcome<T>(app: &AppHandle, outcome: anyhow::Result<T>) -> CmdResult<T> {
+    outcome.map_err(|e| {
+        if e.is::<tmdb::Rejected>() {
+            let state = app.state::<AppState>();
+            if !state.tmdb_rejected.swap(true, Ordering::Relaxed) {
+                let _ = app.emit("tmdb-status", ());
+            }
+        }
+        err(e)
+    })
 }
 
 #[tauri::command]
-async fn title_details(state: State<'_, AppState>, kind: tmdb::Kind, id: u64) -> CmdResult<tmdb::Details> {
-    Tmdb { http: state.http.clone() }.details(kind, id).await.map_err(err)
+async fn catalog_search(app: AppHandle, state: State<'_, AppState>, text: String) -> CmdResult<Vec<tmdb::Title>> {
+    let outcome = async { tmdb(&state)?.search(text.trim()).await }.await;
+    tmdb_outcome(&app, outcome)
 }
 
 #[tauri::command]
-async fn season_episodes(state: State<'_, AppState>, id: u64, season: u32) -> CmdResult<Vec<tmdb::Episode>> {
-    Tmdb { http: state.http.clone() }.episodes(id, season).await.map_err(err)
+async fn title_details(app: AppHandle, state: State<'_, AppState>, kind: tmdb::Kind, id: u64) -> CmdResult<tmdb::Details> {
+    let outcome = async { tmdb(&state)?.details(kind, id).await }.await;
+    tmdb_outcome(&app, outcome)
+}
+
+#[tauri::command]
+async fn season_episodes(app: AppHandle, state: State<'_, AppState>, id: u64, season: u32) -> CmdResult<Vec<tmdb::Episode>> {
+    let outcome = async { tmdb(&state)?.episodes(id, season).await }.await;
+    tmdb_outcome(&app, outcome)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TmdbStatus {
+    state: &'static str,
+    kind: Option<&'static str>,
+    checked_at: Option<i64>,
+    onboarding_seen: bool,
+}
+
+#[tauri::command]
+fn tmdb_status(state: State<'_, AppState>) -> CmdResult<TmdbStatus> {
+    let db = state.db.lock().unwrap();
+    let auth = db::get_setting(&db, "tmdb_key").map_err(err)?.as_deref().and_then(tmdb::parse_key);
+    let checked_at = db::get_setting(&db, "tmdb_checked_at").map_err(err)?.and_then(|v| v.parse().ok());
+    let onboarding_seen = db::get_setting(&db, "onboarding_seen").map_err(err)?.is_some();
+    let status = match &auth {
+        None => "missing",
+        Some(_) if state.tmdb_rejected.load(Ordering::Relaxed) => "rejected",
+        Some(_) => "ok",
+    };
+    Ok(TmdbStatus { state: status, kind: auth.map(|a| a.kind()), checked_at, onboarding_seen })
+}
+
+#[tauri::command]
+async fn save_tmdb_key(app: AppHandle, state: State<'_, AppState>, key: String, skip_check: bool) -> CmdResult<usize> {
+    let auth = tmdb::parse_key(&key).ok_or("tmdb:format")?;
+    let stored = match &auth {
+        tmdb::Auth::Bearer(k) | tmdb::Auth::ApiKey(k) => k.clone(),
+    };
+    if !skip_check {
+        match (Tmdb { http: state.http.clone(), auth }).validate().await {
+            Ok(()) => {}
+            Err(e) if e.is::<tmdb::Rejected>() => return Err("tmdb:rejected".into()),
+            Err(e) if e.downcast_ref::<reqwest::Error>().is_some_and(|r| r.is_connect() || r.is_timeout()) => {
+                return Err("tmdb:unreachable".into());
+            }
+            Err(e) => return Err(err(e)),
+        }
+    }
+    let unmatched = {
+        let db = state.db.lock().unwrap();
+        db::set_setting(&db, "tmdb_key", &stored).map_err(err)?;
+        db::set_setting(&db, "onboarding_seen", "1").map_err(err)?;
+        if skip_check {
+            db.execute("DELETE FROM settings WHERE key = 'tmdb_checked_at'", []).map_err(err)?;
+        } else {
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(err)?.as_secs();
+            db::set_setting(&db, "tmdb_checked_at", &now.to_string()).map_err(err)?;
+        }
+        db::list(&db).map_err(err)?.iter().filter(|i| i.tmdb_id.is_none()).count()
+    };
+    state.tmdb_rejected.store(false, Ordering::Relaxed);
+    let _ = app.emit("tmdb-status", ());
+    tauri::async_runtime::spawn(identify_unmatched(app.clone()));
+    Ok(unmatched)
+}
+
+#[tauri::command]
+fn remove_tmdb_key(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
+    state
+        .db
+        .lock()
+        .unwrap()
+        .execute("DELETE FROM settings WHERE key IN ('tmdb_key', 'tmdb_checked_at')", [])
+        .map_err(err)?;
+    state.tmdb_rejected.store(false, Ordering::Relaxed);
+    let _ = app.emit("tmdb-status", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn mark_onboarding_seen(state: State<'_, AppState>) -> CmdResult<()> {
+    db::set_setting(&state.db.lock().unwrap(), "onboarding_seen", "1").map_err(err)
 }
 
 #[tauri::command]
@@ -442,8 +542,19 @@ async fn lookup(state: &AppState, parsed: &release::Release) -> Option<tmdb::Tit
     if parsed.title.is_empty() {
         return None;
     }
+    if state.tmdb_rejected.load(Ordering::Relaxed) {
+        return None;
+    }
     let tv = parsed.season.is_some();
-    (Tmdb { http: state.http.clone() }).best_match(&parsed.title, parsed.year, tv).await.ok().flatten()
+    match tmdb(state).ok()?.best_match(&parsed.title, parsed.year, tv).await {
+        Ok(found) => found,
+        Err(e) => {
+            if e.is::<tmdb::Rejected>() {
+                state.tmdb_rejected.store(true, Ordering::Relaxed);
+            }
+            None
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -552,16 +663,28 @@ fn resume_resolving(app: &AppHandle) {
     }
 }
 
+#[derive(Clone, Serialize)]
+struct MatchProgress {
+    done: usize,
+    total: usize,
+}
+
 ///retries matching for downloads that couldn't be identified when they were added.
 async fn identify_unmatched(app: AppHandle) {
     let state = app.state::<AppState>();
     let Ok(items) = db::list(&state.db.lock().unwrap()) else { return };
-    for item in items.into_iter().filter(|i| i.tmdb_id.is_none()) {
+    let unmatched: Vec<_> = items.into_iter().filter(|i| i.tmdb_id.is_none()).collect();
+    let total = unmatched.len();
+    for (done, item) in unmatched.into_iter().enumerate() {
         let mut parsed = release::parse(&item.title);
         parsed.year = parsed.year.or(item.year);
         parsed.season = parsed.season.or(item.season);
         parsed.episode = parsed.episode.or(item.episode);
         identify(&state, item.id, parsed).await;
+        let _ = app.emit("tmdb-matching", MatchProgress { done: done + 1, total });
+    }
+    if state.tmdb_rejected.load(Ordering::Relaxed) {
+        let _ = app.emit("tmdb-status", ());
     }
 }
 
@@ -1282,6 +1405,7 @@ fn init_state(app: &AppHandle) -> anyhow::Result<AppState> {
         subtitles: subtitles::Subtitles::default(),
         resolving: Mutex::new(HashMap::new()),
         folder_sizes: Mutex::new(HashMap::new()),
+        tmdb_rejected: AtomicBool::new(false),
     })
 }
 
@@ -1389,6 +1513,10 @@ pub fn run() {
             match_name,
             title_details,
             season_episodes,
+            tmdb_status,
+            save_tmdb_key,
+            remove_tmdb_key,
+            mark_onboarding_seen,
             prowlarr_status,
             open_prowlarr,
             list_sources,
