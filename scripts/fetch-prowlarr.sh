@@ -23,6 +23,13 @@ else
   curl -fL "$URL" | tar -xz -C "$DEST" --strip-components 1
 fi
 
+if [ "${TARGET%-*}" = linux ]; then
+  # Optional tracing and debugger libraries. The AppImage bundler can't resolve
+  # their dependencies (liblttng-ust.so.0 isn't on current distros), and Prowlarr
+  # runs without them.
+  rm -f "$DEST/libcoreclrtraceptprovider.so" "$DEST/libmscordbi.so"
+fi
+
 if [ "$(uname)" = Darwin ]; then
   # Apple Silicon kills unsigned code: ad-hoc sign it.
   find "$DEST" -type f \( -name Prowlarr -o -name '*.dylib' \) -exec codesign --force --sign - {} \; 2>/dev/null
