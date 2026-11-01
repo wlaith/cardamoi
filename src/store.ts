@@ -41,6 +41,11 @@ export const playing = computed(
   () => !!player.value && (player.value.status === "opening" || player.value.status === "playing"),
 );
 
+/** The built-in player is up, drawing its own controls over the picture. */
+export const embedded = computed(
+  () => player.value?.mode === "embedded" && ["opening", "playing", "ended"].includes(player.value.status),
+);
+
 export const opening = ref<{ itemId: number; fileIndex: number; label: string } | null>(null);
 let openingTimer: number | undefined;
 

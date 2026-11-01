@@ -963,3 +963,9 @@ button {
     animation: none !important;
   }
 }
+
+/* While a video plays the page is see-through, so the picture shows behind the player's controls. */
+html.playing,
+html.playing body {
+  background: transparent;
+}

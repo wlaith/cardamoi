@@ -29,6 +29,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm test
       - run: npm run build
       # The Rust build embeds dist/, so hand it to the rust jobs.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -65,7 +66,7 @@ jobs:
           name: dist
           path: dist
       # tauri-build requires bundled resources to exist; tests don't need Prowlarr itself.
-      - run: mkdir -p src-tauri/vendor/prowlarr
+      - run: mkdir -p src-tauri/vendor/prowlarr src-tauri/vendor/mpv
       # Warnings don't fail the build yet; add `-- -D warnings` once existing lints are fixed.
       - run: cargo clippy --locked --all-targets
         working-directory: src-tauri
