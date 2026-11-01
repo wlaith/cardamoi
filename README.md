@@ -1,6 +1,11 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="brand/assets/social/readme-banner-dark-1280x320@1280.png">
   <img alt="cardamoi" src="brand/assets/social/readme-banner-light-1280x320@1280.png">
+  
+
+https://github.com/user-attachments/assets/9a854214-7848-4683-be60-ab0b609e622c
+
+
 </picture>
 
 # cardamoi
