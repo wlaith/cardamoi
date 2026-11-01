@@ -3,7 +3,7 @@ name: release
 on:
   push:
     tags: ['v*']
-  # Builds from any branch as workflow artifacts, without releasing.
+  # Builds from any branch without releasing. Every build also keeps its installers as workflow artifacts.
   workflow_dispatch:
     inputs:
       platform:
@@ -155,7 +155,7 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.id }}
           # Verbose on Linux only, so linuxdeploy failures show their cause.
           args: --target ${{ matrix.target }}${{ runner.os == 'Linux' && ' --verbose' || '' }}
-          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
+          uploadWorkflowArtifacts: true
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         if: runner.os == 'macOS' && env.APPLE_SIGNING == 'true'
         env:
@@ -169,7 +169,7 @@ jobs:
         with:
           releaseId: ${{ needs.create-release.outputs.id }}
           args: --target ${{ matrix.target }}
-          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
+          uploadWorkflowArtifacts: true
 
   # Only goes public once every platform uploaded; a failed leg leaves a draft.
   publish:
