@@ -136,6 +136,12 @@ export interface Track {
   hearingImpaired: boolean;
 }
 
+export interface PlaybackSettings {
+  autoplayNext: boolean;
+  /** Play with the mpv installed on this computer instead of the built-in player. */
+  ownMpv: boolean;
+}
+
 export interface PlayerState {
   itemId: number;
   fileIndex: number;
@@ -149,6 +155,16 @@ export interface PlayerState {
   tracks: Track[];
   subDelay: number;
   error: string | null;
+  mode: "embedded" | "window" | "external";
+  /** Where a resumed start picked up, for the player's own "Resumed at" line. */
+  resumedFrom: number | null;
+  bufferPercent: number | null;
+  /** 0 to 100. */
+  volume: number;
+  muted: boolean;
+  /** How far the cache reaches into the file, in seconds. */
+  cacheUntil: number | null;
+  nextUp: { title: string; secondsLeft: number } | null;
 }
 
 export interface SubtitleSettings {
@@ -196,6 +212,7 @@ export interface Quota {
 
 export type PlayError =
   | { kind: "mpvMissing" }
+  | { kind: "playerMissing" }
   | { kind: "fileMissing" }
   | { kind: "notReady" }
   | { kind: "other"; message: string };
@@ -265,8 +282,8 @@ export const api = {
     invoke<void>("mark_watched", { id, fileIndex, watched }),
   markSeasonWatched: (tmdbId: number, season: number, watched: boolean) =>
     invoke<void>("mark_season_watched", { tmdbId, season, watched }),
-  playbackSettings: () => invoke<{ autoplayNext: boolean }>("playback_settings"),
-  savePlaybackSettings: (settings: { autoplayNext: boolean }) => invoke<void>("save_playback_settings", { settings }),
+  playbackSettings: () => invoke<PlaybackSettings>("playback_settings"),
+  savePlaybackSettings: (settings: PlaybackSettings) => invoke<void>("save_playback_settings", { settings }),
   subtitleSettings: () => invoke<SubtitleSettings>("subtitle_settings"),
   saveSubtitleSettings: (settings: SubtitleSettings) => invoke<void>("save_subtitle_settings", { settings }),
   listSubtitles: (id: number, fileIndex: number) => invoke<Subtitle[]>("list_subtitles", { id, fileIndex }),
@@ -305,7 +322,12 @@ export function plainError(e: unknown): { message: string; details: string } {
     switch (err.kind) {
       case "mpvMissing":
         return {
-          message: "cardamoi plays videos with mpv, which isn't installed. Install it with Homebrew (brew install mpv), or open this video in your system player.",
+          message: "You chose your own mpv, but it isn't installed. Install it (brew install mpv), or switch back to the built-in player in Preferences › General.",
+          details: "",
+        };
+      case "playerMissing":
+        return {
+          message: "cardamoi's player is missing from this installation. Reinstall cardamoi, or choose your own mpv in Preferences › General.",
           details: "",
         };
       case "fileMissing":
@@ -325,8 +347,11 @@ export function plainError(e: unknown): { message: string; details: string } {
   return { message: raw, details: "" };
 }
 
+/** Whether no player could start, so the system player is worth offering. */
 export function isMpvMissing(e: unknown): boolean {
-  return !!e && typeof e === "object" && "kind" in e && (e as PlayError).kind === "mpvMissing";
+  if (!e || typeof e !== "object" || !("kind" in e)) return false;
+  const kind = (e as PlayError).kind;
+  return kind === "mpvMissing" || kind === "playerMissing";
 }
 
 export const SUBTITLE_LANGUAGES = [

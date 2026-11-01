@@ -18,7 +18,7 @@ import {
 } from "./commands";
 import { isTyping } from "./keys";
 import { back, forward, go, replace, route } from "./nav";
-import { loadError, loaded, opening, playing, selection, startSync, undoLast, viewMode } from "./store";
+import { embedded, loadError, loaded, opening, playing, selection, startSync, undoLast, viewMode } from "./store";
 import { loadTmdbStatus, tmdbStatus } from "./tmdb";
 import { contextMenu, hud, palette, sheet } from "./ui";
 import CaptionsPanel from "./components/CaptionsPanel.vue";
@@ -32,6 +32,7 @@ import Toast from "./components/shell/Toast.vue";
 import ErrorNote from "./components/ui/ErrorNote.vue";
 import Loader from "./components/ui/Loader.vue";
 import OpeningPanel from "./components/shell/OpeningPanel.vue";
+import PlayerView from "./components/player/PlayerView.vue";
 import DownloadsView from "./components/views/DownloadsView.vue";
 import HelpView from "./components/views/HelpView.vue";
 import LibraryView from "./components/views/LibraryView.vue";
@@ -114,7 +115,8 @@ function onMenu(id: string) {
 
 /** Keys the menu bar can't own without breaking text fields. */
 function onKey(event: KeyboardEvent) {
-  if (event.defaultPrevented || sheet.value || contextMenu.value || palette.value || isTyping(event.target)) return;
+  // The built-in player has its own keys.
+  if (embedded.value || event.defaultPrevented || sheet.value || contextMenu.value || palette.value || isTyping(event.target)) return;
   const onButton = (event.target as HTMLElement | null)?.closest("button:not([data-nav-item])");
   if (event.key === " " && !onButton) {
     event.preventDefault();
@@ -138,6 +140,9 @@ function onPaste(event: ClipboardEvent) {
     sheet.value = { kind: "magnet", link: text };
   }
 }
+
+// While the built-in player is up the page is see-through, so the picture shows behind its controls.
+watch(embedded, (on) => document.documentElement.classList.toggle("playing", on), { immediate: true });
 
 const setActive = (active: boolean) => document.documentElement.classList.toggle("inactive", !active);
 const onFocus = () => setActive(true);
@@ -182,9 +187,9 @@ onUnmounted(() => {
 
 <template>
   <div class="flex h-screen flex-col">
-    <AppToolbar />
-    <TmdbBanner />
-    <div class="flex min-h-0 flex-1">
+    <AppToolbar v-show="!embedded" />
+    <TmdbBanner v-show="!embedded" />
+    <div v-show="!embedded" class="flex min-h-0 flex-1">
       <main ref="main" class="relative min-w-0 flex-1 overflow-y-auto bg-background">
         <ErrorNote v-if="loadError" :error="`Couldn't read the library: ${loadError}`" class="m-34" />
         <div v-if="!loaded" class="grid h-full place-items-center p-34">
@@ -204,6 +209,7 @@ onUnmounted(() => {
     </div>
     <Toast />
 
+    <PlayerView v-if="embedded" />
     <OpeningPanel v-if="opening" :key="`${opening.itemId}:${opening.fileIndex}`" :label="opening.label" />
     <NowPlayingHud v-if="hud?.kind === 'nowPlaying'" />
     <CaptionsPanel

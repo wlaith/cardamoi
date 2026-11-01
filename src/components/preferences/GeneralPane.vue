@@ -23,6 +23,7 @@ function onThemeKey(event: KeyboardEvent) {
 }
 
 const autoplayNext = ref<boolean | null>(null);
+const ownMpv = ref(false);
 const error = ref<unknown>(null);
 
 const magnetIsUs = ref<boolean | null>(null);
@@ -54,20 +55,23 @@ onMounted(async () => {
   window.addEventListener("focus", checkMagnet);
   checkMagnet();
   try {
-    autoplayNext.value = (await api.playbackSettings()).autoplayNext;
+    const settings = await api.playbackSettings();
+    autoplayNext.value = settings.autoplayNext;
+    ownMpv.value = settings.ownMpv;
   } catch (e) {
     error.value = e;
   }
 });
 
-async function save() {
+async function save(changed: "autoplayNext" | "ownMpv") {
   if (autoplayNext.value == null) return;
   try {
-    await api.savePlaybackSettings({ autoplayNext: autoplayNext.value });
+    await api.savePlaybackSettings({ autoplayNext: autoplayNext.value, ownMpv: ownMpv.value });
     error.value = null;
   } catch (e) {
     error.value = e;
-    autoplayNext.value = !autoplayNext.value;
+    if (changed === "autoplayNext") autoplayNext.value = !autoplayNext.value;
+    else ownMpv.value = !ownMpv.value;
   }
 }
 </script>
@@ -127,12 +131,22 @@ async function save() {
     <section class="space-y-21" aria-labelledby="playback-heading">
       <SectionHeader id="playback-heading" title="Playback" />
       <label v-if="autoplayNext != null" class="flex items-start gap-4">
-        <input v-model="autoplayNext" type="checkbox" class="toggle" @change="save" />
+        <input v-model="autoplayNext" type="checkbox" class="toggle" @change="save('autoplayNext')" />
         <span>
           Play the next episode automatically
           <span class="mt-1 block text-ink-2">
             When an episode ends and the next one is downloaded, it starts after 10 seconds. Press Esc to stay, or Return
             to start it straight away.
+          </span>
+        </span>
+      </label>
+      <label v-if="autoplayNext != null" class="flex items-start gap-4">
+        <input v-model="ownMpv" type="checkbox" class="toggle" @change="save('ownMpv')" />
+        <span>
+          Use my own mpv
+          <span class="mt-1 block text-ink-2">
+            Plays with the mpv installed on this computer, with your mpv.conf and scripts, in its own window. Off,
+            cardamoi plays videos itself and needs nothing installed.
           </span>
         </span>
       </label>

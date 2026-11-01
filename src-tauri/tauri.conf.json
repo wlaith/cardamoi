@@ -10,13 +10,15 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "cardamoi",
         "width": 1200,
         "height": 800,
         "minWidth": 900,
-        "minHeight": 560
+        "minHeight": 560,
+        "transparent": true
       }
     ],
     "security": {
@@ -41,18 +43,12 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "vendor/prowlarr/": "prowlarr/"
+      "vendor/prowlarr/": "prowlarr/",
+      "vendor/mpv/": "mpv/"
     },
     "macOS": {
-      "signingIdentity": "-"
-    },
-    "linux": {
-      "deb": {
-        "depends": ["mpv"]
-      },
-      "rpm": {
-        "depends": ["mpv"]
-      }
+      "signingIdentity": "-",
+      "entitlements": "Entitlements.plist"
     }
   }
 }

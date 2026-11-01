@@ -1,6 +1,8 @@
 mod db;
+mod libmpv;
 mod local;
 mod player;
+mod surface;
 mod prowlarr;
 mod release;
 mod sources;
@@ -891,7 +893,9 @@ async fn play(
     let (item, files, video) = resolve(&state, id, file_index).map_err(|_| PlayError::FileMissing)?;
     let show_hint = player::take_hint(&state.db.lock().unwrap())?;
     let launch = prepare_launch(&state, item, &files, video, from_start.unwrap_or(false), show_hint).await?;
-    state.player.start(&app, launch).await
+    let own = db::get_setting(&state.db.lock().unwrap(), "player")?.as_deref() == Some("own");
+    let mode = player::mode_for(&app, own)?;
+    state.player.start(&app, launch, mode).await
 }
 
 async fn prepare_launch(
@@ -997,18 +1001,24 @@ fn mark_watched(state: State<'_, AppState>, id: i64, file_index: i64, watched: b
 #[serde(rename_all = "camelCase")]
 struct PlaybackSettings {
     autoplay_next: bool,
+    /// Play with the mpv installed on this computer instead of the built-in player.
+    own_mpv: bool,
 }
 
 #[tauri::command]
 fn playback_settings(state: State<'_, AppState>) -> CmdResult<PlaybackSettings> {
-    let value = db::get_setting(&state.db.lock().unwrap(), "autoplay_next").map_err(err)?;
-    Ok(PlaybackSettings { autoplay_next: value.as_deref() != Some("0") })
+    let db = state.db.lock().unwrap();
+    let value = db::get_setting(&db, "autoplay_next").map_err(err)?;
+    let player = db::get_setting(&db, "player").map_err(err)?;
+    Ok(PlaybackSettings { autoplay_next: value.as_deref() != Some("0"), own_mpv: player.as_deref() == Some("own") })
 }
 
 #[tauri::command]
 fn save_playback_settings(state: State<'_, AppState>, settings: PlaybackSettings) -> CmdResult<()> {
     let value = if settings.autoplay_next { "1" } else { "0" };
-    db::set_setting(&state.db.lock().unwrap(), "autoplay_next", value).map_err(err)
+    let db = state.db.lock().unwrap();
+    db::set_setting(&db, "autoplay_next", value).map_err(err)?;
+    db::set_setting(&db, "player", if settings.own_mpv { "own" } else { "builtin" }).map_err(err)
 }
 
 #[tauri::command]
@@ -1496,6 +1506,15 @@ pub fn run() {
         .setup(|app| {
             let state = init_state(app.handle())?;
             app.manage(state);
+            // The built-in player's video view; without it playback falls back to mpv's own window.
+            if let Some(window) = app.get_webview_window("main") {
+                match surface::Surface::attach(&window) {
+                    Ok(surface) => {
+                        app.manage(surface);
+                    }
+                    Err(e) => eprintln!("player: no video view, playing in a separate window: {e:#}"),
+                }
+            }
             links::setup(app);
             tauri::async_runtime::spawn(auto_fetch_subtitles(app.handle().clone()));
             resume_resolving(app.handle());
