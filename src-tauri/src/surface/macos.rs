@@ -6,7 +6,7 @@ use std::{
     ffi::{c_char, c_int, c_void},
     sync::{
         Arc, Mutex, OnceLock,
-        atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicUsize, Ordering},
     },
 };
 
@@ -44,6 +44,18 @@ unsafe extern "C" {
 #[link(name = "QuartzCore", kind = "framework")]
 unsafe extern "C" {}
 
+#[link(name = "IOKit", kind = "framework")]
+unsafe extern "C" {
+    fn IOPMAssertionCreateWithName(kind: *const c_void, level: u32, name: *const c_void, id: *mut u32) -> i32;
+    fn IOPMAssertionRelease(id: u32) -> i32;
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    fn CFStringCreateWithCString(allocator: *const c_void, text: *const c_char, encoding: u32) -> *const c_void;
+    fn CFRelease(object: *const c_void);
+}
+
 unsafe extern "C" {
     fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
 }
@@ -61,6 +73,8 @@ struct Shared {
     render: Mutex<Option<Arc<Render>>>,
     frame_ready: AtomicBool,
     last_size: AtomicI64,
+    /// The power assertion that keeps the display on while a video shows; 0 when none is held.
+    awake: AtomicU32,
 }
 
 static SHARED: OnceLock<Shared> = OnceLock::new();
@@ -72,6 +86,7 @@ fn shared() -> &'static Shared {
         render: Mutex::new(None),
         frame_ready: AtomicBool::new(true),
         last_size: AtomicI64::new(0),
+        awake: AtomicU32::new(0),
     })
 }
 
@@ -202,8 +217,41 @@ impl Surface {
                     let _: () = msg_send![view, setHidden: Bool::new(!visible)];
                 }
                 shared().frame_ready.store(true, Ordering::Release);
+                keep_display_awake(visible);
             }
         });
+    }
+}
+
+/// Stops the display dimming and sleeping while a video shows: libmpv draws into our view, so mpv
+/// never asks for it the way it does with a window of its own.
+fn keep_display_awake(on: bool) {
+    let held = &shared().awake;
+    if on {
+        if held.load(Ordering::Acquire) != 0 {
+            return;
+        }
+        const LEVEL_ON: u32 = 255;
+        const UTF8: u32 = 0x0800_0100;
+        let mut id = 0;
+        // SAFETY: both strings are valid C strings, released once the assertion has copied them.
+        unsafe {
+            // The value of kIOPMAssertionTypePreventUserIdleDisplaySleep, a header macro with no symbol.
+            let kind = CFStringCreateWithCString(std::ptr::null(), c"PreventUserIdleDisplaySleep".as_ptr(), UTF8);
+            let name = CFStringCreateWithCString(std::ptr::null(), c"cardamoi is playing a video".as_ptr(), UTF8);
+            let code = IOPMAssertionCreateWithName(kind, LEVEL_ON, name, &mut id);
+            CFRelease(kind);
+            CFRelease(name);
+            if code == 0 {
+                held.store(id, Ordering::Release);
+            }
+        }
+    } else {
+        let id = held.swap(0, Ordering::AcqRel);
+        if id != 0 {
+            // SAFETY: the id came from IOPMAssertionCreateWithName and is released once.
+            unsafe { IOPMAssertionRelease(id) };
+        }
     }
 }
 
