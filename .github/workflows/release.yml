@@ -3,7 +3,7 @@ name: release
 on:
   push:
     tags: ['v*']
-  # Builds from any branch as workflow artifacts, without releasing.
+  # Builds from any branch without releasing. Every build also keeps its installers as workflow artifacts.
   workflow_dispatch:
     inputs:
       platform:
@@ -98,7 +98,7 @@ jobs:
         run: |
           all='[
             {"os": "macos-latest", "target": "aarch64-apple-darwin", "prowlarr": "osx-arm64"},
-            {"os": "macos-latest", "target": "x86_64-apple-darwin", "prowlarr": "osx-x64"},
+            {"os": "macos-15-intel", "target": "x86_64-apple-darwin", "prowlarr": "osx-x64"},
             {"os": "ubuntu-22.04", "target": "x86_64-unknown-linux-gnu", "prowlarr": "linux-x64"},
             {"os": "windows-latest", "target": "x86_64-pc-windows-msvc", "prowlarr": "windows-x64"}
           ]'
@@ -142,6 +142,8 @@ jobs:
           workspaces: src-tauri
           key: ${{ matrix.target }}
       - run: sh scripts/fetch-prowlarr.sh ${{ matrix.prowlarr }}
+      # The player's library, built for the runner's own architecture (hence the Intel runner for x64).
+      - run: sh scripts/fetch-libmpv.sh ${{ matrix.prowlarr }}
       # Unsigned (ad-hoc on macOS) until the Apple secrets exist: an empty APPLE_*
       # variable makes Tauri try to sign with it, so they're only set when present.
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
@@ -155,7 +157,7 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.id }}
           # Verbose on Linux only, so linuxdeploy failures show their cause.
           args: --target ${{ matrix.target }}${{ runner.os == 'Linux' && ' --verbose' || '' }}
-          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
+          uploadWorkflowArtifacts: true
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         if: runner.os == 'macOS' && env.APPLE_SIGNING == 'true'
         env:
@@ -169,7 +171,7 @@ jobs:
         with:
           releaseId: ${{ needs.create-release.outputs.id }}
           args: --target ${{ matrix.target }}
-          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
+          uploadWorkflowArtifacts: true
 
   # Only goes public once every platform uploaded; a failed leg leaves a draft.
   publish:

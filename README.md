@@ -5,7 +5,7 @@
 
 # cardamoi
 
-A desktop app for finding, downloading and watching films and TV. It keeps a local library, plays it in [mpv](https://mpv.io) with resume and next-episode autoplay, and finds subtitles from OpenSubtitles and Subdl.
+A desktop app for finding, downloading and watching films and TV. It keeps a local library, plays it with resume and next-episode autoplay, and finds subtitles from OpenSubtitles and Subdl. Playback is built in: [libmpv](https://mpv.io) ships inside the app, so there's nothing to install. On macOS the video plays inside the cardamoi window; on Windows and Linux it opens in a player window of its own for now. To use your own mpv instead, choose it in Preferences > General.
 
 Built with [Tauri 2](https://tauri.app), Vue 3 and Rust. Torrents are handled by [librqbit](https://github.com/ikatson/rqbit); search goes through a bundled [Prowlarr](https://prowlarr.com) or any Torznab endpoint you add. Catalog data comes from [TMDB](https://www.themoviedb.org).
 
@@ -17,16 +17,15 @@ macOS builds aren't notarized yet, so the first time you open the app, right-cli
 
 - Node.js 20+
 - Rust (stable)
-- [mpv](https://mpv.io/installation/), on your `PATH`:
-  - macOS: `brew install mpv`
-  - Windows: `scoop install mpv` or `choco install mpv`, or download a build from mpv.io and add its folder to `PATH`
-  - Linux: your package manager, e.g. `sudo apt install mpv`, `sudo pacman -S mpv`, or `sudo dnf install mpv` (Fedora needs RPM Fusion)
+- To fetch the player's library (`scripts/fetch-libmpv.sh`): [Homebrew](https://brew.sh) on macOS, `apt` (Ubuntu or Debian) on Linux, and `curl` with `7z` or `tar` on Windows. A built copy of the app needs nothing installed.
+- Only if you choose your own mpv in Preferences: [mpv](https://mpv.io/installation/) on your `PATH`
 
 ## Setup
 
 ```sh
 npm install
 ./scripts/fetch-prowlarr.sh          # osx-arm64 by default; or osx-x64, linux-x64, windows-x64
+./scripts/fetch-libmpv.sh            # same targets: the built-in player's library
 npm run tauri dev
 ```
 
