@@ -32,12 +32,19 @@
       }
     },
     "updater": {
-      "requireSignedVersion": true
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI0ODg5MkNGQUZDMEJCRjMKUldUenU4Q3Z6NUtJdE9ncER1elB3RlQ2Zyt6dk5CRWd3cjdvS2FyZ1lLSnViRmZ0ZTZocjhpZ1YK",
+      "endpoints": [
+        "https://github.com/wlaith/cardamoi/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
