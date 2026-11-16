@@ -26,8 +26,13 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["magnet"]
+        "schemes": [
+          "magnet"
+        ]
       }
+    },
+    "updater": {
+      "requireSignedVersion": true
     }
   },
   "bundle": {
@@ -48,10 +53,14 @@
     },
     "linux": {
       "deb": {
-        "depends": ["mpv"]
+        "depends": [
+          "mpv"
+        ]
       },
       "rpm": {
-        "depends": ["mpv"]
+        "depends": [
+          "mpv"
+        ]
       }
     }
   }
