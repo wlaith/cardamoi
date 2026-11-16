@@ -1486,7 +1486,9 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 }
 
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_updater::Builder::new().build());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init());
     // On Windows and Linux a clicked magnet link starts a second copy; this hands the link to the first.
     #[cfg(any(windows, target_os = "linux"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| links::focus_main(app)));
