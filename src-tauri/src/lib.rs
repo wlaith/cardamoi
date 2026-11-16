@@ -1503,7 +1503,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .build()?;
     let window = SubmenuBuilder::new(app, "Window").minimize().maximize().build()?;
     let help = SubmenuBuilder::new(app, "Help")
-        .item(&item("help", "cardamoi Help", Some("CmdOrCtrl+Shift+Slash"))?)
+        .item(&item("help", "Cardamoi Help", Some("CmdOrCtrl+Shift+Slash"))?)
         .build()?;
     Menu::with_items(app, &[&app_menu, &file, &edit, &view, &controls, &window, &help])
 }

@@ -24,7 +24,7 @@ const place = computed<Place | null>({
 
 <template>
   <header class="header flex shrink-0 items-center gap-2 pr-13">
-    <button class="header-brand" aria-label="cardamoi, Up Next" @click="go({ name: 'upnext' })">
+    <button class="header-brand" aria-label="Cardamoi, Up Next" @click="go({ name: 'upnext' })">
       <img :src="lockupInk" alt="" class="logo-ink" draggable="false" />
       <img :src="lockupPaper" alt="" class="logo-paper" draggable="false" />
     </button>
@@ -49,7 +49,7 @@ const place = computed<Place | null>({
     </button>
 
     <StatusDisplay />
-    <button class="header-action" aria-label="Help" title="cardamoi Help (⇧⌘/)" @click="go({ name: 'help' })">
+    <button class="header-action" aria-label="Help" title="Cardamoi Help (⇧⌘/)" @click="go({ name: 'help' })">
       <Icon name="help" />
     </button>
     <button class="header-action" aria-label="Preferences" title="Preferences (⌘,)" @click="go({ name: 'preferences', pane: 'general' })">

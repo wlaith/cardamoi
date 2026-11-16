@@ -123,13 +123,13 @@ async function save() {
         title="Magnet links"
         subtitle="Clicking a magnet link in your browser opens it here, ready to download."
       />
-      <p v-if="magnetIsUs">cardamoi opens magnet links.</p>
+      <p v-if="magnetIsUs">Cardamoi opens magnet links.</p>
       <div v-else-if="magnetIsUs === false" class="space-y-8">
         <button class="btn btn-secondary" @click="useForMagnets">
-          Use cardamoi for magnet links <Icon name="magnet" />
+          Use Cardamoi for magnet links <Icon name="magnet" />
         </button>
         <p v-if="magnetSettingsOpened" class="text-ink-2">
-          Windows needs you to finish this in Settings: choose cardamoi for MAGNET in the window that opened.
+          Windows needs you to finish this in Settings: choose Cardamoi for MAGNET in the window that opened.
         </p>
       </div>
       <ErrorNote v-if="magnetError" :error="magnetError" />

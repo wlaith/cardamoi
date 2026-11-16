@@ -101,7 +101,7 @@ const status = computed(() => {
       <template v-if="step === 'welcome'">
         <h1 ref="heading" tabindex="-1" class="mt-13 text-title lowercase outline-none">connect to tmdb</h1>
         <p class="mt-13">
-          cardamoi uses TMDB, a free film and TV database, to find what you want to watch and to recognise what you
+          Cardamoi uses TMDB, a free film and TV database, to find what you want to watch and to recognise what you
           download.
         </p>
         <ul class="mt-21 space-y-13">
@@ -210,7 +210,7 @@ const status = computed(() => {
 
       <template v-else>
         <h1 ref="heading" tabindex="-1" class="text-title lowercase outline-none">you're set</h1>
-        <p class="mt-13">cardamoi is connected to TMDB. Search, artwork and matching are on.</p>
+        <p class="mt-13">Cardamoi is connected to TMDB. Search, artwork and matching are on.</p>
         <div v-if="matched" class="mt-21 space-y-2" aria-live="polite">
           <p v-if="matching" class="tabular-nums text-ink-2">Matching downloads · {{ matching.done }} / {{ matching.total }}</p>
           <p v-else class="text-ink-2">Your downloads have been matched.</p>
