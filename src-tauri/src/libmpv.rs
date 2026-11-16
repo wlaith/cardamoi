@@ -19,13 +19,19 @@ type Handle = *mut c_void;
 
 const EVENT_SHUTDOWN: c_int = 1;
 
+// The renderer only has a caller where the picture embeds in the window (macOS).
 // mpv_render_param_type, from mpv/render.h.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const RENDER_API_TYPE: c_int = 1;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const RENDER_OPENGL_INIT_PARAMS: c_int = 2;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const RENDER_OPENGL_FBO: c_int = 3;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const RENDER_FLIP_Y: c_int = 4;
 
 /// Looks up an OpenGL function by name, for libmpv's renderer.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub type GetProc = unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void;
 
 /// Runs a closure with the renderer's OpenGL context current: libmpv frees its GL objects when the renderer goes.
@@ -38,12 +44,14 @@ struct RenderParam {
 }
 
 #[repr(C)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 struct GlInitParams {
     get_proc_address: Option<GetProc>,
     get_proc_address_ctx: *mut c_void,
 }
 
 #[repr(C)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 struct GlFbo {
     fbo: c_int,
     w: c_int,
@@ -66,10 +74,14 @@ struct Api {
     wakeup: unsafe extern "C" fn(Handle),
     terminate_destroy: unsafe extern "C" fn(Handle),
     error_string: unsafe extern "C" fn(c_int) -> *const c_char,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     render_create: unsafe extern "C" fn(*mut Handle, Handle, *mut RenderParam) -> c_int,
     render_set_update_callback: unsafe extern "C" fn(Handle, Option<unsafe extern "C" fn(*mut c_void)>, *mut c_void),
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     render_update: unsafe extern "C" fn(Handle) -> u64,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     render_render: unsafe extern "C" fn(Handle, *mut RenderParam) -> c_int,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     render_report_swap: unsafe extern "C" fn(Handle),
     render_free: unsafe extern "C" fn(Handle),
     // Last, so the function pointers above never outlive the library.
@@ -155,10 +167,12 @@ unsafe impl Sync for Ptr {}
 pub struct Render {
     api: Arc<Api>,
     ctx: Mutex<Option<Ptr>>,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     on_update: Box<dyn Fn() + Send + Sync>,
     with_gl: WithGl,
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 extern "C" fn render_updated(data: *mut c_void) {
     // SAFETY: `data` is the `Render` that registered this callback, kept alive until `free` clears it.
     let render = unsafe { &*(data as *const Render) };
@@ -167,6 +181,7 @@ extern "C" fn render_updated(data: *mut c_void) {
 
 impl Render {
     /// Draws the current frame into `fbo`, `width` by `height` pixels. False when the player is gone.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn draw(&self, fbo: i32, width: i32, height: i32) -> bool {
         let guard = self.ctx.lock().unwrap();
         let Some(ctx) = &*guard else { return false };
@@ -269,6 +284,7 @@ impl Mpv {
     /// Starts the OpenGL renderer (set `vo=libmpv` before `initialize`). An OpenGL context must be current.
     /// `on_update` runs on an arbitrary thread whenever a new frame should be drawn, and must not call mpv.
     /// `with_gl` runs a closure with that context current, for when the renderer is freed.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn create_render(
         &mut self,
         get_proc: GetProc,
