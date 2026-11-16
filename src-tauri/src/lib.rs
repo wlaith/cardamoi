@@ -247,7 +247,7 @@ fn prowlarr_status(state: State<'_, AppState>) -> prowlarr::Status {
 }
 
 #[tauri::command]
-fn open_prowlarr(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
+async fn open_prowlarr(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
     if let Some(window) = app.get_webview_window("prowlarr") {
         return window.set_focus().map_err(err);
     }
