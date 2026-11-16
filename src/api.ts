@@ -237,6 +237,7 @@ export const api = {
   saveTmdbKey: (key: string, skipCheck = false) => invoke<number>("save_tmdb_key", { key, skipCheck }),
   removeTmdbKey: () => invoke<void>("remove_tmdb_key"),
   markOnboardingSeen: () => invoke<void>("mark_onboarding_seen"),
+  updateReady: (version: string) => invoke<void>("update_ready", { version }),
   prowlarrStatus: () => invoke<ProwlarrStatus>("prowlarr_status"),
   openProwlarr: () => invoke<void>("open_prowlarr"),
   listSources: () => invoke<SourceRow[]>("list_sources"),

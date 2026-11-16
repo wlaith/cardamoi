@@ -223,6 +223,24 @@ fn mark_onboarding_seen(state: State<'_, AppState>) -> CmdResult<()> {
     db::set_setting(&state.db.lock().unwrap(), "onboarding_seen", "1").map_err(err)
 }
 
+const APP_MENU: &str = "app-menu";
+const RESTART_TO_UPDATE: &str = "restart-to-update";
+
+/// Turns on the app menu's Restart to Update item, so a downloaded update stays reachable after its banner is closed.
+#[tauri::command]
+fn update_ready(app: AppHandle, version: String) -> CmdResult<()> {
+    let item = app
+        .menu()
+        .and_then(|menu| menu.get(APP_MENU))
+        .and_then(|menu| menu.as_submenu()?.get(RESTART_TO_UPDATE))
+        .and_then(|item| item.as_menuitem().cloned());
+    if let Some(item) = item {
+        item.set_text(format!("Restart to Update to {version}")).map_err(err)?;
+        item.set_enabled(true).map_err(err)?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn prowlarr_status(state: State<'_, AppState>) -> prowlarr::Status {
     state.prowlarr.status()
@@ -1419,8 +1437,13 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         }
     };
 
-    let app_menu = SubmenuBuilder::new(app, "cardamoi")
+    // Enabled by update_ready once a new version has downloaded.
+    let restart_to_update = MenuItemBuilder::with_id(RESTART_TO_UPDATE, "Restart to Update")
+        .enabled(false)
+        .build(app)?;
+    let app_menu = SubmenuBuilder::with_id(app, APP_MENU, "Cardamoi")
         .about(None)
+        .item(&restart_to_update)
         .separator()
         .item(&item("preferences", "Preferences…", Some("CmdOrCtrl+Comma"))?)
         .separator()
@@ -1519,6 +1542,7 @@ pub fn run() {
             save_tmdb_key,
             remove_tmdb_key,
             mark_onboarding_seen,
+            update_ready,
             prowlarr_status,
             open_prowlarr,
             list_sources,
