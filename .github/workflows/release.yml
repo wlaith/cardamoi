@@ -80,7 +80,7 @@ jobs:
           # Take the id from the response: a fresh draft can lag behind in the listing.
           if [ -z "$id" ]; then
             id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" -q .id \
-              -f tag_name="$TAG" -f name="cardamoi $TAG" \
+              -f tag_name="$TAG" -f name="Cardamoi $TAG" \
               -F draft=true -F prerelease="$PRERELEASE" -F generate_release_notes=true)
           fi
           [ -n "$id" ] || { echo "::error::couldn't create the release"; exit 1; }

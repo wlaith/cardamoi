@@ -11,7 +11,7 @@ Built with [Tauri 2](https://tauri.app), Vue 3 and Rust. Torrents are handled by
 
 Builds for macOS (Apple Silicon and Intel), Windows and Linux are on the [releases page](https://github.com/wlaith/cardamoi/releases). It is primarily tested on macOS (Apple Silicon).
 
-macOS builds aren't notarized yet, so the first time you open the app, right-click it and choose Open (or run `xattr -dr com.apple.quarantine /Applications/cardamoi.app`).
+macOS builds aren't notarized yet, so the first time you open the app, right-click it and choose Open (or run `xattr -dr com.apple.quarantine /Applications/Cardamoi.app`).
 
 ## Requirements
 
