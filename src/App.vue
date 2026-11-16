@@ -29,6 +29,8 @@ import NowPlayingHud from "./components/shell/NowPlayingHud.vue";
 import SheetHost from "./components/shell/SheetHost.vue";
 import TmdbBanner from "./components/shell/TmdbBanner.vue";
 import Toast from "./components/shell/Toast.vue";
+import UpdateBanner from "./components/shell/UpdateBanner.vue";
+import { installUpdate, startUpdateChecks } from "./updates";
 import ErrorNote from "./components/ui/ErrorNote.vue";
 import Loader from "./components/ui/Loader.vue";
 import OpeningPanel from "./components/shell/OpeningPanel.vue";
@@ -62,6 +64,8 @@ function onMenu(id: string) {
   switch (id) {
     case "preferences":
       return go({ name: "preferences", pane: "general" });
+    case "restart-to-update":
+      return installUpdate();
     case "help":
       return go({ name: "help" });
     case "add-magnet":
@@ -144,6 +148,7 @@ const onFocus = () => setActive(true);
 const onBlur = () => setActive(false);
 
 let stopSync: () => void = () => {};
+let stopUpdateChecks: () => void = () => {};
 const unlistenMenu = listen<string>("menu", (event) => onMenu(event.payload));
 
 // A magnet link clicked in the browser. It replaces any open sheet: the click was on purpose.
@@ -164,6 +169,7 @@ onMounted(() => {
   openPendingMagnet();
   document.documentElement.classList.toggle("mac", navigator.userAgent.includes("Mac"));
   stopSync = startSync();
+  stopUpdateChecks = startUpdateChecks();
   window.addEventListener("keydown", onKey);
   window.addEventListener("paste", onPaste);
   window.addEventListener("focus", onFocus);
@@ -171,6 +177,7 @@ onMounted(() => {
 });
 onUnmounted(() => {
   stopSync();
+  stopUpdateChecks();
   unlistenMenu.then((stop) => stop());
   unlistenMagnet.then((stop) => stop());
   window.removeEventListener("keydown", onKey);
@@ -183,6 +190,7 @@ onUnmounted(() => {
 <template>
   <div class="flex h-screen flex-col">
     <AppToolbar />
+    <UpdateBanner />
     <TmdbBanner />
     <div class="flex min-h-0 flex-1">
       <main ref="main" class="relative min-w-0 flex-1 overflow-y-auto bg-background">

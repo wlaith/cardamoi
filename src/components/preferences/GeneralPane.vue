@@ -3,6 +3,17 @@ import { onMounted, onUnmounted, ref } from "vue";
 import { api } from "../../api";
 import { checkFolder, openFolder } from "../../commands";
 import { theme, type Theme } from "../../store";
+import {
+  checkError,
+  checkForUpdate,
+  checkState,
+  currentVersion,
+  installing,
+  installUpdate,
+  openAllReleases,
+  openRelease,
+  readyUpdate,
+} from "../../updates";
 import ErrorNote from "../ui/ErrorNote.vue";
 import Icon from "../ui/Icon.vue";
 import SectionHeader from "../ui/SectionHeader.vue";
@@ -112,16 +123,55 @@ async function save() {
         title="Magnet links"
         subtitle="Clicking a magnet link in your browser opens it here, ready to download."
       />
-      <p v-if="magnetIsUs">cardamoi opens magnet links.</p>
+      <p v-if="magnetIsUs">Cardamoi opens magnet links.</p>
       <div v-else-if="magnetIsUs === false" class="space-y-8">
         <button class="btn btn-secondary" @click="useForMagnets">
-          Use cardamoi for magnet links <Icon name="magnet" />
+          Use Cardamoi for magnet links <Icon name="magnet" />
         </button>
         <p v-if="magnetSettingsOpened" class="text-ink-2">
-          Windows needs you to finish this in Settings: choose cardamoi for MAGNET in the window that opened.
+          Windows needs you to finish this in Settings: choose Cardamoi for MAGNET in the window that opened.
         </p>
       </div>
       <ErrorNote v-if="magnetError" :error="magnetError" />
+    </section>
+
+    <section class="space-y-21" aria-labelledby="updates-heading">
+      <SectionHeader
+        id="updates-heading"
+        title="Updates"
+        subtitle="Cardamoi checks for a new version when it opens and every few hours, and downloads it in the background."
+      />
+      <div v-if="readyUpdate" class="space-y-8">
+        <p>
+          Cardamoi {{ readyUpdate.version }} is ready.
+          <button type="button" class="link inline-flex items-center gap-1" @click="openRelease(readyUpdate.version)">
+            What's new <Icon name="external-link" />
+          </button>
+        </p>
+        <button class="btn btn-secondary" :disabled="installing" @click="installUpdate">
+          {{ installing ? "Installing…" : "Restart to Update" }} <Icon name="renew" />
+        </button>
+      </div>
+      <div v-else class="space-y-8">
+        <p>
+          <template v-if="checkState === 'upToDate'">You're on the latest version, </template>
+          <template v-else>You're on </template>
+          <button v-if="currentVersion" type="button" class="link" @click="openRelease(currentVersion)">
+            Cardamoi {{ currentVersion }}</button
+          >.
+        </p>
+        <button class="btn btn-ghost" :disabled="checkState === 'checking'" @click="checkForUpdate">
+          {{ checkState === "checking" ? "Checking…" : "Check for updates" }} <Icon name="renew" />
+        </button>
+        <p v-if="checkState === 'dev'" class="text-ink-2">Dev builds don't update themselves.</p>
+      </div>
+      <p class="text-ink-2">
+        Every version and its release notes are on GitHub.
+        <button type="button" class="link inline-flex items-center gap-1" @click="openAllReleases">
+          See all releases <Icon name="external-link" />
+        </button>
+      </p>
+      <ErrorNote v-if="checkState === 'failed'" :error="`Couldn't check for updates: ${checkError}`" />
     </section>
 
     <section class="space-y-21" aria-labelledby="playback-heading">

@@ -266,7 +266,7 @@ fn switch_commands(launch: &Launch) -> (Vec<Value>, Vec<Value>) {
     let mut before = vec![
         cmd(vec!["set".into(), "start".into(), format!("{:.1}", launch.start.unwrap_or(0.0)).into()]),
         cmd(vec!["set".into(), "force-media-title".into(), label.clone().into()]),
-        cmd(vec!["set".into(), "title".into(), format!("{label} · cardamoi").into()]),
+        cmd(vec!["set".into(), "title".into(), format!("{label} · Cardamoi").into()]),
     ];
     let languages = slang(launch);
     if !languages.is_empty() {
@@ -331,7 +331,7 @@ fn mpv_args(launch: &Launch, label: &str, socket: &Path, input_conf: &Path) -> V
         format!("--input-ipc-server={}", socket.display()),
         format!("--input-conf={}", input_conf.display()),
         format!("--force-media-title={label}"),
-        format!("--title={label} · cardamoi"),
+        format!("--title={label} · Cardamoi"),
         "--force-window=immediate".into(),
         // Keep episodes open at the end for autoplay.
         format!("--keep-open={}", if is_episode(launch) { "yes" } else { "no" }),
@@ -340,7 +340,7 @@ fn mpv_args(launch: &Launch, label: &str, socket: &Path, input_conf: &Path) -> V
         "--hwdec=auto-safe".into(),
         "--sub-auto=fuzzy".into(),
         "--subs-with-matching-audio=forced".into(),
-        // cardamoi tracks positions, not mpv.
+        // Cardamoi tracks positions, not mpv.
         "--no-resume-playback".into(),
         "--save-position-on-quit=no".into(),
         "--cache=yes".into(),

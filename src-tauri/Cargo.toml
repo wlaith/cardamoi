@@ -32,6 +32,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 trash = "5"
 tauri-plugin-deep-link = "2"
+tauri-plugin-process = "2"
 
 [profile.release]
 codegen-units = 1
@@ -45,3 +46,6 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"

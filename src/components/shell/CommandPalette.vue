@@ -92,7 +92,7 @@ const commands = computed<Row[]>(() => {
       ? { id: "tmdb", label: "TMDB key", icon: "key", run: () => go({ name: "preferences", pane: "tmdb" }) }
       : { id: "tmdb", label: "Set up TMDB", icon: "key", run: () => go({ name: "setup" }) },
     { id: "prefs", label: "Preferences", icon: "settings", keys: "⌘,", run: () => go({ name: "preferences", pane: "general" }) },
-    { id: "help", label: "cardamoi Help", icon: "help", keys: "⇧⌘/", run: () => go({ name: "help" }) },
+    { id: "help", label: "Cardamoi Help", icon: "help", keys: "⇧⌘/", run: () => go({ name: "help" }) },
   ];
   return words.value.length ? all.filter((c) => matches(c.label)).slice(0, 5) : all.slice(0, 7);
 });

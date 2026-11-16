@@ -43,7 +43,7 @@ watch(() => props.topic, scrollToTopic);
 
 <template>
   <div class="space-y-55 p-34">
-    <PageHeader title="Help" subtitle="How cardamoi finds, downloads and plays films and shows." />
+    <PageHeader title="Help" subtitle="How Cardamoi finds, downloads and plays films and shows." />
     <div class="flex gap-12">
     <nav class="sticky top-8 w-56 shrink-0 self-start" aria-label="Help topics">
       <button
@@ -69,7 +69,7 @@ watch(() => props.topic, scrollToTopic);
         <h2 class="mb-4 text-heading text-ink">Your TMDB key</h2>
         <p class="mt-4 first-of-type:mt-0">
           Search, posters, episode lists and matching downloads to the right title all come from TMDB, a free film and TV
-          database. cardamoi uses your own key, which is free for personal use. Without one, the library, downloads and
+          database. Cardamoi uses your own key, which is free for personal use. Without one, the library, downloads and
           playback still work; titles just have no artwork and aren't matched.
         </p>
         <p class="mt-4 first-of-type:mt-0">
@@ -79,7 +79,7 @@ watch(() => props.topic, scrollToTopic);
           Developer and say it's for personal, non-commercial use. Copy the
           <strong class="font-semibold text-ink">API Read Access Token</strong> (the long one that starts with eyJ; the shorter API Key works too) and paste it in
           <button class="link" @click="go({ name: 'preferences', pane: 'tmdb' })">Preferences › TMDB</button>, or
-          <button class="link" @click="go({ name: 'setup' })">let cardamoi walk you through it</button>.
+          <button class="link" @click="go({ name: 'setup' })">let Cardamoi walk you through it</button>.
         </p>
         <p class="mt-4 first-of-type:mt-0">
           If TMDB stops accepting the key, a bar under the toolbar says so. Copy the token again from your API settings and
@@ -89,7 +89,7 @@ watch(() => props.topic, scrollToTopic);
       <section id="help-sources">
         <h2 class="mb-4 text-heading text-ink">Sources and indexers</h2>
         <p class="mt-4 first-of-type:mt-0">
-          cardamoi looks for releases in its sources. The Internet Archive is built in and only has public domain and
+          Cardamoi looks for releases in its sources. The Internet Archive is built in and only has public domain and
           freely licensed films. For everything else, add indexers to the built-in Prowlarr: open
           <button class="link" @click="go({ name: 'preferences', pane: 'sources' })">Preferences › Sources</button>, press
           <strong class="font-semibold text-ink">Manage Indexers…</strong>, and add the indexers you use. If searches find nothing at all, this is
@@ -123,7 +123,7 @@ watch(() => props.topic, scrollToTopic);
       <section id="help-playback">
         <h2 class="mb-4 text-heading text-ink">Playing videos</h2>
         <p class="mt-4 first-of-type:mt-0">
-          cardamoi plays videos with mpv. If it isn't installed, install it with Homebrew (<code>brew install mpv</code>),
+          Cardamoi plays videos with mpv. If it isn't installed, install it with Homebrew (<code>brew install mpv</code>),
           or choose <strong class="font-semibold text-ink">Open in System Player</strong> from a video's menu. While a video plays, the display at the
           top of the window shows its progress; click it for playback controls.
         </p>
