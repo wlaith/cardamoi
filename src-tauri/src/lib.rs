@@ -776,7 +776,7 @@ fn find_torrent(session: &Session, info_hash: &str) -> Option<Arc<ManagedTorrent
 }
 
 #[tauri::command]
-fn library(state: State<'_, AppState>) -> CmdResult<Vec<LibraryEntry>> {
+async fn library(state: State<'_, AppState>) -> CmdResult<Vec<LibraryEntry>> {
     let (items, rule) = {
         let db = state.db.lock().unwrap();
         (db::list(&db).map_err(err)?, db::get_rule(&db).map_err(err)?)
