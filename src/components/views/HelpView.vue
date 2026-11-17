@@ -21,7 +21,7 @@ const shortcuts: [string, string][] = [
   ["⇧ Space", "Play from the beginning"],
   ["⌘F", "Search"],
   ["⌘[  ⌘]", "Back, forward"],
-  ["⌥⌘1 to ⌥⌘4", "Up Next, Films, TV Shows, Downloads"],
+  ["⌥⌘1 to ⌥⌘5", "Up Next, Films, TV Shows, Watchlist, Downloads"],
   ["⌘1  ⌘2", "View as grid, as list"],
   ["⌘I", "Get Info"],
   ["⌘T", "Subtitles"],

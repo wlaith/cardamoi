@@ -114,7 +114,7 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", onOutside, tru
             {{ rows.length > SHOWN ? `All ${rows.length} downloads` : "Open Downloads" }}
           </button>
           <span class="flex-1" />
-          <Kbd keys="⌥⌘4" />
+          <Kbd keys="⌥⌘5" />
         </div>
         <div class="flex items-center gap-2 border-t border-subtle py-(--space-5) pr-21 pl-13">
           <button class="btn btn-ghost" @click="visit(() => (sheet = { kind: 'magnet', link: '' }))">
