@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 
 export interface SearchResult {
   source: string;
@@ -254,8 +254,19 @@ export type ProwlarrStatus =
   | { state: "ready" }
   | { state: "failed"; message: string };
 
+const libraryListeners = new Set<() => void>();
+
+export function onLibraryChange(fn: () => void): () => void {
+  libraryListeners.add(fn);
+  return () => libraryListeners.delete(fn);
+}
+
+function changes<T>(cmd: string, args?: InvokeArgs): Promise<T> {
+  return invoke<T>(cmd, args).finally(() => libraryListeners.forEach((fn) => fn()));
+}
+
 export const api = {
-  search: (query: SearchQuery) => invoke<{ results: Found[]; errors: string[] }>("search", { query }),
+  search:(query: SearchQuery) => invoke<{ results: Found[]; errors: string[] }>("search", { query }),
   catalogSearch: (text: string) => invoke<CatalogTitle[]>("catalog_search", { text }),
   matchName: (name: string) => invoke<NameLookup>("match_name", { name }),
   titleDetails: (kind: Kind, id: number) => invoke<Details>("title_details", { kind, id }),
@@ -272,27 +283,27 @@ export const api = {
     invoke<void>("add_source", { name, url, apiKey }),
   setSourceEnabled: (id: number, enabled: boolean) => invoke<void>("set_source_enabled", { id, enabled }),
   removeSource: (id: number) => invoke<void>("remove_source", { id }),
-  addDownload: (req: AddRequest) => invoke<void>("add_download", { req }),
-  retryDownload: (id: number) => invoke<void>("retry_download", { id }),
-  scanLibraryFolder: () => invoke<number>("scan_library_folder"),
+  addDownload: (req: AddRequest) => changes<void>("add_download", { req }),
+  retryDownload: (id: number) => changes<void>("retry_download", { id }),
+  scanLibraryFolder: () => changes<number>("scan_library_folder"),
   takePendingMagnet: () => invoke<string | null>("take_pending_magnet"),
   magnetHandlerIsUs: () => invoke<boolean>("magnet_handler_is_us"),
   makeMagnetHandler: () => invoke<boolean>("make_magnet_handler"),
   openLibraryFolder: () => invoke<string>("open_library_folder"),
   library: () => invoke<LibraryEntry[]>("library"),
-  pause: (id: number) => invoke<void>("pause", { id }),
-  resume: (id: number) => invoke<void>("resume", { id }),
-  remove: (id: number) => invoke<void>("remove", { id }),
+  pause: (id: number) => changes<void>("pause", { id }),
+  resume: (id: number) => changes<void>("resume", { id }),
+  remove: (id: number) => changes<void>("remove", { id }),
   play: (id: number, fileIndex: number | null = null, fromStart = false) =>
-    invoke<void>("play", { id, fileIndex, fromStart }),
+    changes<void>("play", { id, fileIndex, fromStart }),
   openExternal: (id: number, fileIndex: number | null = null) => invoke<void>("open_external", { id, fileIndex }),
   playerState: () => invoke<PlayerState | null>("player_state"),
   playerCommand: (args: (string | number)[]) => invoke<void>("player_command", { args }),
-  stopPlayer: () => invoke<void>("stop_player"),
+  stopPlayer: () => changes<void>("stop_player"),
   markWatched: (id: number, fileIndex: number, watched: boolean) =>
-    invoke<void>("mark_watched", { id, fileIndex, watched }),
+    changes<void>("mark_watched", { id, fileIndex, watched }),
   markSeasonWatched: (tmdbId: number, season: number, watched: boolean) =>
-    invoke<void>("mark_season_watched", { tmdbId, season, watched }),
+    changes<void>("mark_season_watched", { tmdbId, season, watched }),
   playbackSettings: () => invoke<PlaybackSettings>("playback_settings"),
   savePlaybackSettings: (settings: PlaybackSettings) => invoke<void>("save_playback_settings", { settings }),
   subtitleSettings: () => invoke<SubtitleSettings>("subtitle_settings"),
@@ -311,12 +322,12 @@ export const api = {
   saveToWatchlist: (title: Saved) => invoke<void>("save_to_watchlist", { title }),
   removeFromWatchlist: (id: number, kind: Kind) => invoke<void>("remove_from_watchlist", { id, kind }),
   trashRule: () => invoke<TrashRule>("trash_rule"),
-  saveTrashRule: (rule: TrashRule) => invoke<void>("save_trash_rule", { rule }),
+  saveTrashRule: (rule: TrashRule) => changes<void>("save_trash_rule", { rule }),
   trashBacklog: () => invoke<{ count: number; bytes: number }>("trash_backlog"),
-  scheduleBacklog: () => invoke<void>("schedule_backlog"),
+  scheduleBacklog: () => changes<void>("schedule_backlog"),
   /** `at` in Unix seconds, or null to keep them whatever the rule says. */
-  setTrashTimer: (targets: VideoKey[], at: number | null) => invoke<void>("set_trash_timer", { targets, at }),
-  clearTrashTimer: (targets: VideoKey[]) => invoke<void>("clear_trash_timer", { targets }),
+  setTrashTimer: (targets: VideoKey[], at: number | null) => changes<void>("set_trash_timer", { targets, at }),
+  clearTrashTimer: (targets: VideoKey[]) => changes<void>("clear_trash_timer", { targets }),
 };
 
 export function errorMessage(e: unknown): string {

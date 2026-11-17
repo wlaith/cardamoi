@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { computed, ref, watch, type Ref } from "vue";
-import { api, formatBytes, plainError, type LibraryEntry, type PlayerState } from "./api";
+import { api, formatBytes, onLibraryChange, plainError, type LibraryEntry, type PlayerState } from "./api";
+import { refreshDelay } from "./sync";
 import { groupLibrary, type LocalEpisode, type Show } from "./library";
 
 export const entries = ref<LibraryEntry[]>([]);
@@ -183,14 +184,27 @@ export const columns = remembered<number>(
 );
 
 export function startSync(): () => void {
-  refresh();
-  const timer = window.setInterval(refresh, 1000);
+  let timer = 0;
+  let stopped = false;
+  const tick = async () => {
+    if (document.visibilityState !== "hidden") await refresh();
+    if (!stopped) timer = window.setTimeout(tick, refreshDelay(entries.value, playing.value));
+  };
+  tick();
+  const stopChanges = onLibraryChange(refresh);
+  // Positions are saved as a video plays; read them once it ends rather than at the next slow tick.
+  const stopEnded = watch(playing, (on) => on || refresh());
+  window.addEventListener("focus", refresh);
   api.playerState().then((p) => (player.value = p), () => {});
   const unlisten = listen<PlayerState>("player://state", (event) => (player.value = event.payload));
   window.addEventListener("beforeunload", dismissNotice);
   return () => {
     window.removeEventListener("beforeunload", dismissNotice);
-    window.clearInterval(timer);
+    window.removeEventListener("focus", refresh);
+    stopped = true;
+    window.clearTimeout(timer);
+    stopChanges();
+    stopEnded();
     unlisten.then((stop) => stop());
   };
 }
