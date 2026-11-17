@@ -756,6 +756,7 @@ mod tests {
         delete_video(&conn, id, 2).unwrap();
         assert_eq!(videos_for(&conn, id).unwrap().len(), 2);
         assert_eq!(all_videos(&conn).unwrap().len(), 2);
+        drop(conn);
         std::fs::remove_file(&path).unwrap();
     }
 
@@ -765,6 +766,7 @@ mod tests {
         assert_eq!(get_rule(&conn).unwrap(), rule("keep"));
         set_rule(&conn, &Rule { after_watching: "countdown".into(), days: 7 }).unwrap();
         assert_eq!(get_rule(&conn).unwrap(), Rule { after_watching: "countdown".into(), days: 7 });
+        drop(conn);
         std::fs::remove_file(&path).unwrap();
     }
 
