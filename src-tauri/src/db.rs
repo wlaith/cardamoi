@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Item {
@@ -134,6 +134,16 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
             file_index  INTEGER NOT NULL,
             trash_at    INTEGER,
             PRIMARY KEY (item_id, file_index)
+        );
+        -- Titles saved to watch later. A download of one takes it off.
+        CREATE TABLE IF NOT EXISTS watchlist (
+            tmdb_id   INTEGER NOT NULL,
+            kind      TEXT NOT NULL,
+            title     TEXT NOT NULL,
+            year      INTEGER,
+            poster    TEXT,
+            added_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+            PRIMARY KEY (kind, tmdb_id)
         );",
     )?;
     for (table, column, ty) in [
@@ -201,6 +211,9 @@ pub fn insert(conn: &Connection, item: &NewItem) -> rusqlite::Result<i64> {
             item.local_path
         ],
     )?;
+    if let (Some(id), Some(kind)) = (item.tmdb_id, item.kind) {
+        unsave(conn, id, kind)?;
+    }
     conn.query_row("SELECT id FROM items WHERE info_hash = ?1", params![item.info_hash], |r| r.get(0))
 }
 
@@ -221,6 +234,38 @@ pub fn set_match(conn: &Connection, id: i64, m: &Match) -> rusqlite::Result<()> 
          WHERE id = ?1",
         params![id, m.title, m.year, m.poster, m.tmdb_id, m.kind, m.season, m.episode],
     )?;
+    unsave(conn, m.tmdb_id, m.kind)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Saved {
+    pub id: i64,
+    pub kind: String,
+    pub title: String,
+    pub year: Option<i32>,
+    pub poster: Option<String>,
+}
+
+pub fn list_saved(conn: &Connection) -> rusqlite::Result<Vec<Saved>> {
+    let mut stmt = conn.prepare(
+        "SELECT tmdb_id, kind, title, year, poster FROM watchlist ORDER BY added_at DESC, rowid DESC",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(Saved { id: r.get(0)?, kind: r.get(1)?, title: r.get(2)?, year: r.get(3)?, poster: r.get(4)? })
+    })?;
+    rows.collect()
+}
+
+pub fn save(conn: &Connection, s: &Saved) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT OR IGNORE INTO watchlist (tmdb_id, kind, title, year, poster) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![s.id, s.kind, s.title, s.year, s.poster],
+    )?;
+    Ok(())
+}
+
+pub fn unsave(conn: &Connection, id: i64, kind: &str) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM watchlist WHERE tmdb_id = ?1 AND kind = ?2", params![id, kind])?;
     Ok(())
 }
 
@@ -628,6 +673,40 @@ pub fn delete_source(conn: &Connection, id: i64) -> rusqlite::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn saved(id: i64, kind: &str) -> Saved {
+        Saved { id, kind: kind.into(), title: "Severance".into(), year: Some(2022), poster: None }
+    }
+
+    #[test]
+    fn the_watchlist_keeps_titles_newest_first_once_each() {
+        let (conn, path) = temp_db("watchlist");
+        save(&conn, &saved(1, "movie")).unwrap();
+        save(&conn, &saved(95396, "tv")).unwrap();
+        save(&conn, &saved(95396, "tv")).unwrap();
+        assert_eq!(list_saved(&conn).unwrap(), vec![saved(95396, "tv"), saved(1, "movie")]);
+        unsave(&conn, 1, "movie").unwrap();
+        assert_eq!(list_saved(&conn).unwrap(), vec![saved(95396, "tv")]);
+        drop(conn);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn downloading_a_title_takes_it_off_the_watchlist() {
+        let (conn, path) = temp_db("watchlist-download");
+        save(&conn, &saved(95396, "tv")).unwrap();
+        save(&conn, &saved(95396, "movie")).unwrap();
+        save(&conn, &saved(7, "movie")).unwrap();
+        insert(&conn, &new_item("abc")).unwrap();
+        assert_eq!(list_saved(&conn).unwrap(), vec![saved(7, "movie"), saved(95396, "movie")]);
+        // A magnet matched to a title after it was added counts too.
+        let id = insert(&conn, &NewItem { tmdb_id: None, kind: None, ..new_item("def") }).unwrap();
+        let m = Match { title: "Film", year: None, poster: None, tmdb_id: 7, kind: "movie", season: None, episode: None };
+        set_match(&conn, id, &m).unwrap();
+        assert_eq!(list_saved(&conn).unwrap(), vec![saved(95396, "movie")]);
+        drop(conn);
+        let _ = std::fs::remove_file(path);
+    }
 
     #[test]
     fn upgrades_an_old_library() {
