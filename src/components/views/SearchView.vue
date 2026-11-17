@@ -5,6 +5,8 @@ import { arrowNav } from "../../keys";
 import { go } from "../../nav";
 import { entries, selection, shelf } from "../../store";
 import { isTmdbKeyError, noteTmdbError } from "../../tmdb";
+import { openMenu, type MenuEntry } from "../../ui";
+import { isSaved, save, unsave } from "../../watchlist";
 import ShelfTile from "../ShelfTile.vue";
 import ErrorNote from "../ui/ErrorNote.vue";
 import PosterTile from "../ui/PosterTile.vue";
@@ -67,6 +69,20 @@ const subtitle = computed(() => {
 function open(t: CatalogTitle) {
   go({ name: "title", title: t });
 }
+
+const isOwned = (t: CatalogTitle) => owned.value.has(`${t.kind}:${t.id}`);
+
+function tag(t: CatalogTitle) {
+  if (isOwned(t)) return "In library";
+  return isSaved(t) ? "Saved" : undefined;
+}
+
+function menu(event: MouseEvent, t: CatalogTitle) {
+  const items: MenuEntry[] = [{ label: "Open", action: () => open(t) }];
+  if (isSaved(t)) items.push({ label: "Remove from Watchlist", action: () => unsave(t) });
+  else if (!isOwned(t)) items.push({ label: "Save to Watchlist", action: () => save(t) });
+  openMenu(event, items);
+}
 </script>
 
 <template>
@@ -110,12 +126,12 @@ function open(t: CatalogTitle) {
           :poster="t.poster"
           :title="t.title"
           :line="line(t)"
-          :tag="owned.has(`${t.kind}:${t.id}`) ? 'In library' : undefined"
+          :tag="tag(t)"
           tag-kind="blue"
           :selected="picked === `${t.kind}-${t.id}`"
           @select="picked = `${t.kind}-${t.id}`"
           @open="open(t)"
-          @menu="(e) => e.preventDefault()"
+          @menu="(e) => menu(e, t)"
         />
       </ul>
     </section>
