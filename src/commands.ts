@@ -185,7 +185,6 @@ export async function addMagnet(
       season: show ? (at?.season ?? null) : null,
       episode: show ? (at?.episode ?? null) : null,
     });
-    await refresh();
     announce(`Added "${title?.title || magnetName(link) || "magnet link"}" to Downloads`);
     return null;
   } catch (e) {
@@ -205,7 +204,6 @@ export async function checkFolder() {
   try {
     const added = await api.scanLibraryFolder();
     announce(added ? `Added ${added} ${added === 1 ? "video" : "videos"} from the folder` : "No new videos in the folder");
-    await refresh();
   } catch (e) {
     showError("The folder couldn't be checked.", e);
   }
