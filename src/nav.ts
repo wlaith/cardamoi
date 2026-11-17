@@ -7,6 +7,7 @@ export type Route =
   | { name: "upnext" }
   | { name: "films" }
   | { name: "shows" }
+  | { name: "watchlist" }
   | { name: "downloads" }
   | { name: "search"; query: string }
   | { name: "title"; title: CatalogTitle }
@@ -15,9 +16,9 @@ export type Route =
   | { name: "help"; topic?: string }
   | { name: "setup"; step?: SetupStep };
 
-export type SetupStep = "welcome" | "get" | "paste" | "done";
+export type SetupStep = "welcome" | "get" | "paste" | "indexers" | "subtitles" | "done";
 
-export type Section = "upnext" | "films" | "shows" | "downloads" | "search" | "preferences" | "help" | "setup";
+export type Section = "upnext" | "films" | "shows" | "watchlist" | "downloads" | "search" | "preferences" | "help" | "setup";
 
 interface Visit {
   route: Route;

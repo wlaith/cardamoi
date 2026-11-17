@@ -1,6 +1,8 @@
 mod db;
+mod libmpv;
 mod local;
 mod player;
+mod surface;
 mod prowlarr;
 mod release;
 mod sources;
@@ -223,13 +225,31 @@ fn mark_onboarding_seen(state: State<'_, AppState>) -> CmdResult<()> {
     db::set_setting(&state.db.lock().unwrap(), "onboarding_seen", "1").map_err(err)
 }
 
+const APP_MENU: &str = "app-menu";
+const RESTART_TO_UPDATE: &str = "restart-to-update";
+
+/// Turns on the app menu's Restart to Update item, so a downloaded update stays reachable after its banner is closed.
+#[tauri::command]
+fn update_ready(app: AppHandle, version: String) -> CmdResult<()> {
+    let item = app
+        .menu()
+        .and_then(|menu| menu.get(APP_MENU))
+        .and_then(|menu| menu.as_submenu()?.get(RESTART_TO_UPDATE))
+        .and_then(|item| item.as_menuitem().cloned());
+    if let Some(item) = item {
+        item.set_text(format!("Restart to Update to {version}")).map_err(err)?;
+        item.set_enabled(true).map_err(err)?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn prowlarr_status(state: State<'_, AppState>) -> prowlarr::Status {
     state.prowlarr.status()
 }
 
 #[tauri::command]
-fn open_prowlarr(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
+async fn open_prowlarr(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
     if let Some(window) = app.get_webview_window("prowlarr") {
         return window.set_focus().map_err(err);
     }
@@ -714,9 +734,10 @@ struct VideoEntry {
     playable: bool,
     ready_in_secs: Option<u64>,
     resume_at: Option<f64>,
+    trash_at: Option<i64>,
 }
 
-fn video_entry(video: db::Video, file_progress: &[u64], speed_mibps: f64) -> VideoEntry {
+fn video_entry(video: db::Video, file_progress: &[u64], speed_mibps: f64, rule: &db::Rule) -> VideoEntry {
     let have = file_progress.get(video.file_index as usize).copied().unwrap_or(0);
     let missing = player::buffer_target(video.len).saturating_sub(have);
     let ready_in_secs =
@@ -726,11 +747,12 @@ fn video_entry(video: db::Video, file_progress: &[u64], speed_mibps: f64) -> Vid
         playable: video.len > 0 && (have >= video.len || missing == 0),
         ready_in_secs,
         resume_at: player::resume_from(video.position_secs, video.duration_secs),
+        trash_at: db::trash_at(&video, rule),
         video,
     }
 }
 
-fn local_entry(state: &AppState, item: db::Item) -> LibraryEntry {
+fn local_entry(state: &AppState, item: db::Item, rule: &db::Rule) -> LibraryEntry {
     let videos = db::videos_for(&state.db.lock().unwrap(), item.id).unwrap_or_default();
     let progress = Files::of(state, &item).map(|f| f.progress(&videos)).unwrap_or_default();
     let on_disk: u64 = progress.iter().sum();
@@ -743,7 +765,7 @@ fn local_entry(state: &AppState, item: db::Item) -> LibraryEntry {
         eta: None,
         error: (on_disk == 0).then(|| "The file is no longer in the folder.".into()),
         resolving_secs: None,
-        videos: videos.into_iter().map(|v| video_entry(v, &progress, 0.0)).collect(),
+        videos: videos.into_iter().map(|v| video_entry(v, &progress, 0.0, rule)).collect(),
         item,
     }
 }
@@ -754,13 +776,16 @@ fn find_torrent(session: &Session, info_hash: &str) -> Option<Arc<ManagedTorrent
 }
 
 #[tauri::command]
-fn library(state: State<'_, AppState>) -> CmdResult<Vec<LibraryEntry>> {
-    let items = db::list(&state.db.lock().unwrap()).map_err(err)?;
+async fn library(state: State<'_, AppState>) -> CmdResult<Vec<LibraryEntry>> {
+    let (items, rule) = {
+        let db = state.db.lock().unwrap();
+        (db::list(&db).map_err(err)?, db::get_rule(&db).map_err(err)?)
+    };
     Ok(items
         .into_iter()
         .map(|mut item| {
             if item.local_path.is_some() {
-                return local_entry(&state, item);
+                return local_entry(&state, item, &rule);
             }
             let Some(handle) = find_torrent(&state.session, &item.info_hash) else {
                 let videos = db::videos_for(&state.db.lock().unwrap(), item.id).unwrap_or_default();
@@ -781,7 +806,7 @@ fn library(state: State<'_, AppState>) -> CmdResult<Vec<LibraryEntry>> {
                     eta: None,
                     error,
                     resolving_secs,
-                    videos: videos.into_iter().map(|v| video_entry(v, &[], 0.0)).collect(),
+                    videos: videos.into_iter().map(|v| video_entry(v, &[], 0.0, &rule)).collect(),
                 };
             };
             if item.title.is_empty() {
@@ -810,7 +835,7 @@ fn library(state: State<'_, AppState>) -> CmdResult<Vec<LibraryEntry>> {
                 speed_mibps: speed,
                 eta: stats.live.as_ref().and_then(|l| l.time_remaining.as_ref()).map(|t| t.to_string()),
                 resolving_secs: None,
-                videos: videos.into_iter().map(|v| video_entry(v, &stats.file_progress, speed)).collect(),
+                videos: videos.into_iter().map(|v| video_entry(v, &stats.file_progress, speed, &rule)).collect(),
                 error: stats.error,
                 item,
             }
@@ -847,12 +872,16 @@ fn move_to_trash(path: &Path) -> CmdResult<()> {
 
 #[tauri::command]
 async fn remove(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    remove_item(&state, id).await
+}
+
+async fn remove_item(state: &AppState, id: i64) -> CmdResult<()> {
     if let Some(resolving) = state.resolving.lock().unwrap().remove(&id) {
         if let Some(task) = resolving.task {
             task.abort();
         }
     }
-    let (item, handle) = torrent_for_item(&state, id).map_err(err)?;
+    let (item, handle) = torrent_for_item(state, id).map_err(err)?;
     if let Some(path) = &item.local_path {
         let subs = db::list_subtitles(&state.db.lock().unwrap(), id, 0).map_err(err)?;
         for sub in subs.iter().filter(|s| s.source != "torrent") {
@@ -880,6 +909,182 @@ async fn remove(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
     db::delete(&state.db.lock().unwrap(), id).map_err(err)
 }
 
+async fn trash_video(state: &AppState, item_id: i64, file_index: i64) -> CmdResult<()> {
+    let videos = db::videos_for(&state.db.lock().unwrap(), item_id).map_err(err)?;
+    if videos.len() <= 1 {
+        return remove_item(state, item_id).await;
+    }
+    let Some(video) = videos.iter().find(|v| v.file_index == file_index) else { return Ok(()) };
+    let (_, handle) = torrent_for_item(state, item_id).map_err(err)?;
+    if let Some(handle) = handle {
+        let keep: HashSet<usize> = torrent_files(&handle)
+            .map_err(err)?
+            .into_iter()
+            .map(|(i, _, _)| i)
+            .filter(|&i| i as i64 != file_index)
+            .collect();
+        state.session.update_only_files(&handle, &keep).await.map_err(err)?;
+        move_to_trash(&handle.output_folder().join(&video.path))?;
+    }
+    let subs = db::list_subtitles(&state.db.lock().unwrap(), item_id, file_index).map_err(err)?;
+    for sub in subs.iter().filter(|s| s.source != "torrent") {
+        move_to_trash(Path::new(&sub.path))?;
+    }
+    db::delete_video(&state.db.lock().unwrap(), item_id, file_index).map_err(err)
+}
+
+fn unix_now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
+}
+
+async fn trash_due(app: AppHandle) {
+    loop {
+        let state = app.state::<AppState>();
+        let open = state
+            .player
+            .state()
+            .filter(|p| !matches!(p.status, "stopped" | "failed" | "crashed"))
+            .map(|p| (p.item_id, p.file_index));
+        let due: Vec<(i64, i64)> = {
+            let db = state.db.lock().unwrap();
+            let rule = db::get_rule(&db).unwrap_or_else(|_| db::Rule { after_watching: "keep".into(), days: 3 });
+            let now = unix_now();
+            db::all_videos(&db)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|v| db::trash_at(v, &rule).is_some_and(|at| at <= now))
+                .map(|v| (v.item_id, v.file_index))
+                .filter(|&video| Some(video) != open)
+                .collect()
+        };
+        for (item_id, file_index) in due {
+            // A failure is tried again next time round.
+            if let Err(e) = trash_video(&state, item_id, file_index).await {
+                eprintln!("auto-trash: {e}");
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(60)).await;
+    }
+}
+
+fn stops_seeding(seed: bool, finished: bool, state: &TorrentStatsState, playing: bool) -> bool {
+    !seed && finished && matches!(state, TorrentStatsState::Live) && !playing
+}
+
+fn seeds(state: &AppState) -> bool {
+    db::get_setting(&state.db.lock().unwrap(), "seed").ok().flatten().as_deref() == Some("1")
+}
+
+fn all_torrents(state: &AppState) -> Vec<Arc<ManagedTorrent>> {
+    state.session.with_torrents(|torrents| torrents.map(|(_, handle)| handle.clone()).collect())
+}
+
+async fn stop_seeding(state: &AppState) {
+    let seed = seeds(state);
+    let open = state
+        .player
+        .state()
+        .filter(|p| !matches!(p.status, "stopped" | "failed" | "crashed"))
+        .and_then(|p| db::get(&state.db.lock().unwrap(), p.item_id).ok())
+        .map(|item| item.info_hash);
+    for handle in all_torrents(state) {
+        let stats = handle.stats();
+        let playing = open.as_deref() == Some(handle.info_hash().as_string().as_str());
+        if stops_seeding(seed, stats.finished, &stats.state, playing) {
+            let _ = state.session.pause(&handle).await;
+        }
+    }
+}
+
+async fn seeding_rule(app: AppHandle) {
+    loop {
+        stop_seeding(&app.state::<AppState>()).await;
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    }
+}
+
+#[tauri::command]
+fn seeding(state: State<'_, AppState>) -> bool {
+    seeds(&state)
+}
+
+#[tauri::command]
+async fn set_seeding(state: State<'_, AppState>, on: bool) -> CmdResult<()> {
+    db::set_setting(&state.db.lock().unwrap(), "seed", if on { "1" } else { "0" }).map_err(err)?;
+    if !on {
+        stop_seeding(&state).await;
+        return Ok(());
+    }
+    for handle in all_torrents(&state) {
+        let stats = handle.stats();
+        if stats.finished && matches!(stats.state, TorrentStatsState::Paused) {
+            state.session.unpause(&handle).await.map_err(err)?;
+        }
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct Backlog {
+    count: u32,
+    bytes: u64,
+}
+
+#[tauri::command]
+fn watchlist(state: State<'_, AppState>) -> CmdResult<Vec<db::Saved>> {
+    db::list_saved(&state.db.lock().unwrap()).map_err(err)
+}
+
+#[tauri::command]
+fn save_to_watchlist(state: State<'_, AppState>, title: db::Saved) -> CmdResult<()> {
+    db::save(&state.db.lock().unwrap(), &title).map_err(err)
+}
+
+#[tauri::command]
+fn remove_from_watchlist(state: State<'_, AppState>, id: i64, kind: String) -> CmdResult<()> {
+    db::unsave(&state.db.lock().unwrap(), id, &kind).map_err(err)
+}
+
+#[tauri::command]
+fn trash_rule(state: State<'_, AppState>) -> CmdResult<db::Rule> {
+    db::get_rule(&state.db.lock().unwrap()).map_err(err)
+}
+
+#[tauri::command]
+fn save_trash_rule(state: State<'_, AppState>, rule: db::Rule) -> CmdResult<()> {
+    db::set_rule(&state.db.lock().unwrap(), &rule).map_err(err)
+}
+
+#[tauri::command]
+fn trash_backlog(state: State<'_, AppState>) -> CmdResult<Backlog> {
+    let (count, bytes) = db::backlog(&state.db.lock().unwrap()).map_err(err)?;
+    Ok(Backlog { count, bytes })
+}
+
+#[tauri::command]
+fn schedule_backlog(state: State<'_, AppState>) -> CmdResult<()> {
+    db::schedule_backlog(&state.db.lock().unwrap()).map_err(err)
+}
+
+/// `at` is a Unix time, or nothing to keep the videos whatever the rule says.
+#[tauri::command]
+fn set_trash_timer(state: State<'_, AppState>, targets: Vec<(i64, i64)>, at: Option<i64>) -> CmdResult<()> {
+    let db = state.db.lock().unwrap();
+    for (item_id, file_index) in targets {
+        db::set_timer(&db, item_id, file_index, at).map_err(err)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_trash_timer(state: State<'_, AppState>, targets: Vec<(i64, i64)>) -> CmdResult<()> {
+    let db = state.db.lock().unwrap();
+    for (item_id, file_index) in targets {
+        db::clear_timer(&db, item_id, file_index).map_err(err)?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn play(
     app: AppHandle,
@@ -891,7 +1096,9 @@ async fn play(
     let (item, files, video) = resolve(&state, id, file_index).map_err(|_| PlayError::FileMissing)?;
     let show_hint = player::take_hint(&state.db.lock().unwrap())?;
     let launch = prepare_launch(&state, item, &files, video, from_start.unwrap_or(false), show_hint).await?;
-    state.player.start(&app, launch).await
+    let own = db::get_setting(&state.db.lock().unwrap(), "player")?.as_deref() == Some("own");
+    let mode = player::mode_for(&app, own)?;
+    state.player.start(&app, launch, mode).await
 }
 
 async fn prepare_launch(
@@ -997,18 +1204,24 @@ fn mark_watched(state: State<'_, AppState>, id: i64, file_index: i64, watched: b
 #[serde(rename_all = "camelCase")]
 struct PlaybackSettings {
     autoplay_next: bool,
+    /// Play with the mpv installed on this computer instead of the built-in player.
+    own_mpv: bool,
 }
 
 #[tauri::command]
 fn playback_settings(state: State<'_, AppState>) -> CmdResult<PlaybackSettings> {
-    let value = db::get_setting(&state.db.lock().unwrap(), "autoplay_next").map_err(err)?;
-    Ok(PlaybackSettings { autoplay_next: value.as_deref() != Some("0") })
+    let db = state.db.lock().unwrap();
+    let value = db::get_setting(&db, "autoplay_next").map_err(err)?;
+    let player = db::get_setting(&db, "player").map_err(err)?;
+    Ok(PlaybackSettings { autoplay_next: value.as_deref() != Some("0"), own_mpv: player.as_deref() == Some("own") })
 }
 
 #[tauri::command]
 fn save_playback_settings(state: State<'_, AppState>, settings: PlaybackSettings) -> CmdResult<()> {
     let value = if settings.autoplay_next { "1" } else { "0" };
-    db::set_setting(&state.db.lock().unwrap(), "autoplay_next", value).map_err(err)
+    let db = state.db.lock().unwrap();
+    db::set_setting(&db, "autoplay_next", value).map_err(err)?;
+    db::set_setting(&db, "player", if settings.own_mpv { "own" } else { "builtin" }).map_err(err)
 }
 
 #[tauri::command]
@@ -1419,8 +1632,13 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         }
     };
 
-    let app_menu = SubmenuBuilder::new(app, "cardamoi")
+    // Enabled by update_ready once a new version has downloaded.
+    let restart_to_update = MenuItemBuilder::with_id(RESTART_TO_UPDATE, "Restart to Update")
+        .enabled(false)
+        .build(app)?;
+    let app_menu = SubmenuBuilder::with_id(app, APP_MENU, "Cardamoi")
         .about(None)
+        .item(&restart_to_update)
         .separator()
         .item(&item("preferences", "Preferences…", Some("CmdOrCtrl+Comma"))?)
         .separator()
@@ -1462,7 +1680,8 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .item(&item("go-upnext", "Up Next", Some("CmdOrCtrl+Alt+Digit1"))?)
         .item(&item("go-films", "Films", Some("CmdOrCtrl+Alt+Digit2"))?)
         .item(&item("go-shows", "TV Shows", Some("CmdOrCtrl+Alt+Digit3"))?)
-        .item(&item("go-downloads", "Downloads", Some("CmdOrCtrl+Alt+Digit4"))?)
+        .item(&item("go-watchlist", "Watchlist", Some("CmdOrCtrl+Alt+Digit4"))?)
+        .item(&item("go-downloads", "Downloads", Some("CmdOrCtrl+Alt+Digit5"))?)
         .separator()
         .item(&item("back", "Back", Some("CmdOrCtrl+BracketLeft"))?)
         .item(&item("forward", "Forward", Some("CmdOrCtrl+BracketRight"))?)
@@ -1480,13 +1699,15 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .build()?;
     let window = SubmenuBuilder::new(app, "Window").minimize().maximize().build()?;
     let help = SubmenuBuilder::new(app, "Help")
-        .item(&item("help", "cardamoi Help", Some("CmdOrCtrl+Shift+Slash"))?)
+        .item(&item("help", "Cardamoi Help", Some("CmdOrCtrl+Shift+Slash"))?)
         .build()?;
     Menu::with_items(app, &[&app_menu, &file, &edit, &view, &controls, &window, &help])
 }
 
 pub fn run() {
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init());
     // On Windows and Linux a clicked magnet link starts a second copy; this hands the link to the first.
     #[cfg(any(windows, target_os = "linux"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| links::focus_main(app)));
@@ -1496,11 +1717,24 @@ pub fn run() {
         .setup(|app| {
             let state = init_state(app.handle())?;
             app.manage(state);
+            #[cfg(unix)]
+            player::remove_stale_sockets(&app.path().app_data_dir()?);
+            // The built-in player's video view; without it playback falls back to mpv's own window.
+            if let Some(window) = app.get_webview_window("main") {
+                match surface::Surface::attach(&window) {
+                    Ok(surface) => {
+                        app.manage(surface);
+                    }
+                    Err(e) => eprintln!("player: no video view, playing in a separate window: {e:#}"),
+                }
+            }
             links::setup(app);
             tauri::async_runtime::spawn(auto_fetch_subtitles(app.handle().clone()));
             resume_resolving(app.handle());
             tauri::async_runtime::spawn(identify_unmatched(app.handle().clone()));
             tauri::async_runtime::spawn(watch_folder(app.handle().clone()));
+            tauri::async_runtime::spawn(trash_due(app.handle().clone()));
+            tauri::async_runtime::spawn(seeding_rule(app.handle().clone()));
             app.set_menu(build_menu(app.handle())?)?;
             app.on_menu_event(|app, event| {
                 let _ = app.emit("menu", event.id().0.as_str());
@@ -1509,6 +1743,17 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             search,
+            watchlist,
+            save_to_watchlist,
+            remove_from_watchlist,
+            trash_rule,
+            save_trash_rule,
+            trash_backlog,
+            schedule_backlog,
+            set_trash_timer,
+            seeding,
+            set_seeding,
+            clear_trash_timer,
             catalog_search,
             match_name,
             title_details,
@@ -1517,6 +1762,7 @@ pub fn run() {
             save_tmdb_key,
             remove_tmdb_key,
             mark_onboarding_seen,
+            update_ready,
             prowlarr_status,
             open_prowlarr,
             list_sources,
@@ -1565,6 +1811,15 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stops_seeding_only_finished_live_torrents_when_seeding_is_off() {
+        assert!(stops_seeding(false, true, &TorrentStatsState::Live, false));
+        assert!(!stops_seeding(true, true, &TorrentStatsState::Live, false));
+        assert!(!stops_seeding(false, false, &TorrentStatsState::Live, false));
+        assert!(!stops_seeding(false, true, &TorrentStatsState::Paused, false));
+        assert!(!stops_seeding(false, true, &TorrentStatsState::Live, true));
+    }
 
     fn pick(files: &[(&str, u64)]) -> Option<usize> {
         best_video(files.iter().enumerate().map(|(i, (p, len))| (i, Path::new(*p), *len)))

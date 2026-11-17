@@ -1,24 +1,33 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
-import { api, plainError } from "../../api";
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
+import { api, plainError, systemLanguage, type ProwlarrStatus } from "../../api";
 import { back, canGoBack, replace, type SetupStep } from "../../nav";
-import { keyFormat, loadTmdbStatus, matching, openTmdb, TMDB_API_SETTINGS, TMDB_SIGNUP } from "../../tmdb";
+import { keyFormat, loadTmdbStatus, matching, openTmdb, tmdbReady, tmdbStatus, TMDB_API_SETTINGS, TMDB_SIGNUP } from "../../tmdb";
+import ErrorNote from "../ui/ErrorNote.vue";
 import Icon from "../ui/Icon.vue";
 import Kbd from "../ui/Kbd.vue";
 import ProgressBar from "../ui/ProgressBar.vue";
+import Spinner from "../ui/Spinner.vue";
+
+const OPENSUBTITLES_CONSUMERS = "https://www.opensubtitles.com/en/consumers";
 
 const props = defineProps<{ step?: SetupStep }>();
 const step = computed<SetupStep>(() => props.step ?? "welcome");
-const numbered: SetupStep[] = ["welcome", "get", "paste"];
+
+const firstRun = tmdbStatus.value?.state === "missing" && !tmdbStatus.value.onboardingSeen;
+const numbered: SetupStep[] = firstRun ? ["welcome", "get", "paste", "indexers", "subtitles"] : ["welcome", "get", "paste"];
+const afterTmdb: SetupStep = firstRun ? "indexers" : "done";
 
 const heading = ref<HTMLElement>();
 const field = ref<HTMLInputElement>();
+const subtitleField = ref<HTMLInputElement>();
 
 watch(
   step,
   async (s) => {
     await nextTick();
     if (s === "paste") field.value?.focus();
+    else if (s === "subtitles") subtitleField.value?.focus();
     else heading.value?.focus();
   },
   { immediate: true },
@@ -35,8 +44,68 @@ function leave() {
 
 async function later() {
   await api.markOnboardingSeen().catch(() => {});
+  if (firstRun) return to(afterTmdb);
   await loadTmdbStatus();
   leave();
+}
+
+async function finish() {
+  await loadTmdbStatus();
+  to("done");
+}
+
+const prowlarr = ref<ProwlarrStatus>({ state: "starting" });
+const prowlarrError = ref<unknown>(null);
+let prowlarrTimer: number | undefined;
+
+async function loadProwlarr() {
+  try {
+    prowlarr.value = await api.prowlarrStatus();
+  } catch (e) {
+    prowlarr.value = { state: "failed", message: String(e) };
+  }
+}
+
+watch(
+  step,
+  (s) => {
+    window.clearInterval(prowlarrTimer);
+    if (s !== "indexers") return;
+    loadProwlarr();
+    prowlarrTimer = window.setInterval(loadProwlarr, 2000);
+  },
+  { immediate: true },
+);
+onUnmounted(() => window.clearInterval(prowlarrTimer));
+
+async function openProwlarr() {
+  prowlarrError.value = null;
+  try {
+    await api.openProwlarr();
+  } catch (e) {
+    prowlarrError.value = e;
+  }
+}
+
+const subtitleKey = ref("");
+const savingSubtitles = ref(false);
+const subtitleError = ref<unknown>(null);
+
+async function saveSubtitleKey() {
+  if (!subtitleKey.value.trim()) return;
+  savingSubtitles.value = true;
+  subtitleError.value = null;
+  try {
+    const settings = await api.subtitleSettings();
+    if (settings.languages.length === 0) settings.languages = [systemLanguage()];
+    await api.saveSubtitleSettings({ ...settings, opensubtitlesKey: subtitleKey.value.trim() });
+    subtitleKey.value = "";
+    await finish();
+  } catch (e) {
+    subtitleError.value = e;
+  } finally {
+    savingSubtitles.value = false;
+  }
 }
 
 const key = ref("");
@@ -73,7 +142,7 @@ async function connect(skipCheck = false) {
     matched.value = await api.saveTmdbKey(key.value, skipCheck);
     key.value = "";
     await loadTmdbStatus();
-    to("done");
+    to(afterTmdb);
   } catch (e) {
     const text = String(e);
     failure.value = text.includes("tmdb:rejected") ? "rejected" : text.includes("tmdb:unreachable") ? "unreachable" : "other";
@@ -101,7 +170,7 @@ const status = computed(() => {
       <template v-if="step === 'welcome'">
         <h1 ref="heading" tabindex="-1" class="mt-13 text-title lowercase outline-none">connect to tmdb</h1>
         <p class="mt-13">
-          cardamoi uses TMDB, a free film and TV database, to find what you want to watch and to recognise what you
+          Cardamoi uses TMDB, a free film and TV database, to find what you want to watch and to recognise what you
           download.
         </p>
         <ul class="mt-21 space-y-13">
@@ -208,9 +277,87 @@ const status = computed(() => {
         </div>
       </form>
 
+      <template v-else-if="step === 'indexers'">
+        <h1 ref="heading" tabindex="-1" class="mt-13 text-title lowercase outline-none">add indexers</h1>
+        <p class="mt-13">
+          Out of the box, searches only cover the Internet Archive's public domain films. Add the indexers you use to
+          the built-in Prowlarr to search them too.
+        </p>
+        <ol class="mt-21 border-t border-line">
+          <li class="flex items-center gap-13 border-b border-line py-13">
+            <span class="tabular-nums text-ink-2">01</span>
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold">Open Prowlarr</p>
+              <p class="mt-2 text-ink-2">Choose Indexers, then Add Indexer, and pick the ones you use.</p>
+            </div>
+            <span v-if="prowlarr.state === 'starting'" class="tag shrink-0 gap-2"><Spinner :size="12" /> Starting</span>
+            <button
+              v-else
+              type="button"
+              class="btn btn-secondary btn-sm shrink-0"
+              :disabled="prowlarr.state !== 'ready'"
+              @click="openProwlarr"
+            >
+              Manage Indexers
+            </button>
+          </li>
+          <li class="flex gap-13 border-b border-line py-13">
+            <span class="tabular-nums text-ink-2">02</span>
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold">Come back here</p>
+              <p class="mt-2 text-ink-2">Searches use every indexer you add. You can add more later in Preferences, Sources.</p>
+            </div>
+          </li>
+        </ol>
+        <ErrorNote v-if="prowlarr.state === 'failed'" :error="prowlarr.message" class="mt-13" />
+        <ErrorNote v-if="prowlarrError" :error="prowlarrError" class="mt-13" />
+        <div class="mt-34 flex flex-wrap items-center gap-2">
+          <button v-if="!tmdbReady" type="button" class="btn btn-secondary" @click="to('welcome')"><Icon name="arrow-left" /> Back</button>
+          <button type="button" class="btn btn-primary" @click="to('subtitles')">Continue <Icon name="arrow-right" /></button>
+          <div class="flex-1" />
+          <button type="button" class="btn btn-ghost" @click="to('subtitles')">Skip</button>
+        </div>
+      </template>
+
+      <form v-else-if="step === 'subtitles'" @submit.prevent="saveSubtitleKey">
+        <h1 ref="heading" tabindex="-1" class="mt-13 text-title lowercase outline-none">find subtitles</h1>
+        <p class="mt-13">
+          With a free OpenSubtitles key, Cardamoi finds subtitles for what you watch and can fetch them while a film
+          downloads.
+        </p>
+        <p class="mt-13 text-ink-2">
+          Create an account on opensubtitles.com, then add a consumer under your profile. Its API key is shown there.
+        </p>
+        <button type="button" class="btn btn-secondary btn-sm mt-13" @click="openTmdb(OPENSUBTITLES_CONSUMERS)">
+          OpenSubtitles consumers <Icon name="external-link" />
+        </button>
+        <label for="os-key" class="field-label mt-21">OpenSubtitles API key</label>
+        <input
+          id="os-key"
+          ref="subtitleField"
+          v-model="subtitleKey"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          class="field"
+          aria-describedby="os-key-help"
+        />
+        <p id="os-key-help" class="field-helper">Sign in and pick languages later in Preferences, Subtitles.</p>
+        <ErrorNote v-if="subtitleError" :error="subtitleError" class="mt-13" />
+        <div class="mt-34 flex flex-wrap items-center gap-2">
+          <button type="button" class="btn btn-secondary" @click="to('indexers')"><Icon name="arrow-left" /> Back</button>
+          <button type="submit" class="btn btn-primary" :disabled="savingSubtitles || !subtitleKey.trim()">
+            {{ savingSubtitles ? "Saving" : "Save" }}
+          </button>
+          <div class="flex-1" />
+          <button type="button" class="btn btn-ghost" @click="finish">Skip</button>
+        </div>
+      </form>
+
       <template v-else>
         <h1 ref="heading" tabindex="-1" class="text-title lowercase outline-none">you're set</h1>
-        <p class="mt-13">cardamoi is connected to TMDB. Search, artwork and matching are on.</p>
+        <p v-if="tmdbReady" class="mt-13">Cardamoi is connected to TMDB. Search, artwork and matching are on.</p>
+        <p v-else class="mt-13">You can finish setting up any time in Preferences.</p>
         <div v-if="matched" class="mt-21 space-y-2" aria-live="polite">
           <p v-if="matching" class="tabular-nums text-ink-2">Matching downloads · {{ matching.done }} / {{ matching.total }}</p>
           <p v-else class="text-ink-2">Your downloads have been matched.</p>

@@ -11,6 +11,15 @@ export function canRetry(e: LibraryEntry): boolean {
   return e.status === "error" && !!e.torrent_url?.startsWith("magnet:");
 }
 
+export function trashIn(at: number): string {
+  const minutes = Math.ceil((at - Date.now() / 1000) / 60);
+  if (minutes <= 0) return "Trash after playback";
+  if (minutes < 60) return `Trash in ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  return days ? `Trash in ${days} d ${hours % 24} h` : `Trash in ${hours} h`;
+}
+
 export function readyIn(secs: number | null): string {
   if (secs == null) return "";
   return secs < 60 ? "Ready in under a minute" : `Ready in about ${Math.round(secs / 60)} min`;
@@ -52,6 +61,7 @@ export function filmLine(e: LibraryEntry): { text: string; accent: boolean } {
   const join = (...parts: string[]) => parts.filter(Boolean).join(" · ");
   if (e.status === "done" || e.status === "missing") {
     if (e.status === "missing") return { text: "Missing from the downloads folder", accent: false };
+    if (v?.trashAt != null) return { text: trashIn(v.trashAt), accent: false };
     if (v?.watched) return { text: join(year, "Watched"), accent: false };
     if (v?.resumeAt != null) return { text: join(year, timeLeft(v)), accent: false };
     return { text: year || formatBytes(e.totalBytes), accent: false };

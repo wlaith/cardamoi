@@ -18,7 +18,7 @@ import {
 } from "./commands";
 import { isTyping } from "./keys";
 import { back, forward, go, replace, route } from "./nav";
-import { loadError, loaded, opening, playing, selection, startSync, undoLast, viewMode } from "./store";
+import { embedded, loadError, loaded, opening, playing, selection, startSync, undoLast, viewMode } from "./store";
 import { loadTmdbStatus, tmdbStatus } from "./tmdb";
 import { contextMenu, hud, palette, sheet } from "./ui";
 import CaptionsPanel from "./components/CaptionsPanel.vue";
@@ -29,9 +29,13 @@ import NowPlayingHud from "./components/shell/NowPlayingHud.vue";
 import SheetHost from "./components/shell/SheetHost.vue";
 import TmdbBanner from "./components/shell/TmdbBanner.vue";
 import Toast from "./components/shell/Toast.vue";
+import UpdateBanner from "./components/shell/UpdateBanner.vue";
+import { installUpdate, startUpdateChecks } from "./updates";
+import { loadWatchlist } from "./watchlist";
 import ErrorNote from "./components/ui/ErrorNote.vue";
 import Loader from "./components/ui/Loader.vue";
 import OpeningPanel from "./components/shell/OpeningPanel.vue";
+import PlayerView from "./components/player/PlayerView.vue";
 import DownloadsView from "./components/views/DownloadsView.vue";
 import HelpView from "./components/views/HelpView.vue";
 import LibraryView from "./components/views/LibraryView.vue";
@@ -41,6 +45,7 @@ import SearchView from "./components/views/SearchView.vue";
 import SetupView from "./components/views/SetupView.vue";
 import TitleView from "./components/views/TitleView.vue";
 import UpNextView from "./components/views/UpNextView.vue";
+import WatchlistView from "./components/views/WatchlistView.vue";
 
 const main = ref<HTMLElement>();
 const selected = computed(() => videoOf(selection.value));
@@ -62,6 +67,8 @@ function onMenu(id: string) {
   switch (id) {
     case "preferences":
       return go({ name: "preferences", pane: "general" });
+    case "restart-to-update":
+      return installUpdate();
     case "help":
       return go({ name: "help" });
     case "add-magnet":
@@ -84,6 +91,8 @@ function onMenu(id: string) {
       return go({ name: "films" });
     case "go-shows":
       return go({ name: "shows" });
+    case "go-watchlist":
+      return go({ name: "watchlist" });
     case "go-downloads":
       return go({ name: "downloads" });
     case "back":
@@ -114,7 +123,8 @@ function onMenu(id: string) {
 
 /** Keys the menu bar can't own without breaking text fields. */
 function onKey(event: KeyboardEvent) {
-  if (event.defaultPrevented || sheet.value || contextMenu.value || palette.value || isTyping(event.target)) return;
+  // The built-in player has its own keys.
+  if (embedded.value || event.defaultPrevented || sheet.value || contextMenu.value || palette.value || isTyping(event.target)) return;
   const onButton = (event.target as HTMLElement | null)?.closest("button:not([data-nav-item])");
   if (event.key === " " && !onButton) {
     event.preventDefault();
@@ -139,11 +149,15 @@ function onPaste(event: ClipboardEvent) {
   }
 }
 
+// While the built-in player is up the page is see-through, so the picture shows behind its controls.
+watch(embedded, (on) => document.documentElement.classList.toggle("playing", on), { immediate: true });
+
 const setActive = (active: boolean) => document.documentElement.classList.toggle("inactive", !active);
 const onFocus = () => setActive(true);
 const onBlur = () => setActive(false);
 
 let stopSync: () => void = () => {};
+let stopUpdateChecks: () => void = () => {};
 const unlistenMenu = listen<string>("menu", (event) => onMenu(event.payload));
 
 // A magnet link clicked in the browser. It replaces any open sheet: the click was on purpose.
@@ -161,9 +175,11 @@ async function offerSetup() {
 
 onMounted(() => {
   offerSetup();
+  loadWatchlist();
   openPendingMagnet();
   document.documentElement.classList.toggle("mac", navigator.userAgent.includes("Mac"));
   stopSync = startSync();
+  stopUpdateChecks = startUpdateChecks();
   window.addEventListener("keydown", onKey);
   window.addEventListener("paste", onPaste);
   window.addEventListener("focus", onFocus);
@@ -171,6 +187,7 @@ onMounted(() => {
 });
 onUnmounted(() => {
   stopSync();
+  stopUpdateChecks();
   unlistenMenu.then((stop) => stop());
   unlistenMagnet.then((stop) => stop());
   window.removeEventListener("keydown", onKey);
@@ -182,9 +199,10 @@ onUnmounted(() => {
 
 <template>
   <div class="flex h-screen flex-col">
-    <AppToolbar />
-    <TmdbBanner />
-    <div class="flex min-h-0 flex-1">
+    <AppToolbar v-show="!embedded" />
+    <UpdateBanner v-show="!embedded" />
+    <TmdbBanner v-show="!embedded" />
+    <div v-show="!embedded" class="flex min-h-0 flex-1">
       <main ref="main" class="relative min-w-0 flex-1 overflow-y-auto bg-background">
         <ErrorNote v-if="loadError" :error="`Couldn't read the library: ${loadError}`" class="m-34" />
         <div v-if="!loaded" class="grid h-full place-items-center p-34">
@@ -193,6 +211,7 @@ onUnmounted(() => {
         <UpNextView v-else-if="route.name === 'upnext'" />
         <LibraryView v-else-if="route.name === 'films'" kind="film" />
         <LibraryView v-else-if="route.name === 'shows'" kind="show" />
+        <WatchlistView v-else-if="route.name === 'watchlist'" />
         <DownloadsView v-else-if="route.name === 'downloads'" />
         <SearchView v-else-if="route.name === 'search'" :query="route.query" />
         <TitleView v-else-if="route.name === 'title'" :key="`${route.title.kind}:${route.title.id}`" :title="route.title" />
@@ -204,6 +223,7 @@ onUnmounted(() => {
     </div>
     <Toast />
 
+    <PlayerView v-if="embedded" />
     <OpeningPanel v-if="opening" :key="`${opening.itemId}:${opening.fileIndex}`" :label="opening.label" />
     <NowPlayingHud v-if="hud?.kind === 'nowPlaying'" />
     <CaptionsPanel

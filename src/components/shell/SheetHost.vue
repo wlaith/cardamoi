@@ -4,6 +4,7 @@ import { closeSheet, sheet } from "../../ui";
 import Icon from "../ui/Icon.vue";
 import InfoSheet from "./InfoSheet.vue";
 import MagnetSheet from "./MagnetSheet.vue";
+import TrashTimerSheet from "./TrashTimerSheet.vue";
 
 const panel = ref<HTMLElement>();
 const showDetails = ref(false);
@@ -52,12 +53,13 @@ function onKey(event: KeyboardEvent) {
   <div v-if="sheet" class="scrim fixed inset-0 z-40 grid place-items-center p-6" @keydown="onKey" @mousedown.self="closeSheet()">
     <div
       ref="panel"
-      class="modal relative w-[560px] max-w-full"
+      class="modal relative max-w-full"
+      :class="sheet.kind === 'trashTimer' ? 'w-[480px]' : 'w-[560px]'"
       role="dialog"
       aria-modal="true"
-      :aria-labelledby="sheet.kind === 'alert' ? 'alert-title' : undefined"
+      :aria-labelledby="sheet.kind === 'alert' ? 'alert-title' : sheet.kind === 'trashTimer' ? 'trash-timer-title' : undefined"
     >
-      <button class="btn-icon absolute top-13 right-13 z-10" aria-label="Close" @click="closeSheet()"><Icon name="close" :size="20" /></button>
+      <button v-if="sheet.kind !== 'trashTimer'" class="btn-icon absolute top-13 right-13 z-10" aria-label="Close" @click="closeSheet()"><Icon name="close" :size="20" /></button>
       <template v-if="sheet.kind === 'alert'">
         <div class="px-34 pt-34 pr-89">
           <p v-if="sheet.buttons.length > 1" class="eyebrow">{{ sheet.buttons[sheet.buttons.length - 1].label }}</p>
@@ -89,6 +91,7 @@ function onKey(event: KeyboardEvent) {
       </template>
       <InfoSheet v-else-if="sheet.kind === 'info'" :ep="sheet.ep" />
       <MagnetSheet v-else-if="sheet.kind === 'magnet'" :link="sheet.link" />
+      <TrashTimerSheet v-else-if="sheet.kind === 'trashTimer'" :title="sheet.title" :name="sheet.name" :videos="sheet.videos" />
     </div>
   </div>
 </template>

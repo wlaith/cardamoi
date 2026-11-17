@@ -1,8 +1,19 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
-import { api } from "../../api";
+import { api, formatBytes, type TrashRule } from "../../api";
 import { checkFolder, openFolder } from "../../commands";
 import { theme, type Theme } from "../../store";
+import {
+  checkError,
+  checkForUpdate,
+  checkState,
+  currentVersion,
+  installing,
+  installUpdate,
+  openAllReleases,
+  openRelease,
+  readyUpdate,
+} from "../../updates";
 import ErrorNote from "../ui/ErrorNote.vue";
 import Icon from "../ui/Icon.vue";
 import SectionHeader from "../ui/SectionHeader.vue";
@@ -22,8 +33,65 @@ function onThemeKey(event: KeyboardEvent) {
   (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
 }
 
+const afterWatching: { id: TrashRule["afterWatching"]; label: string; icon: "checkmark" | "trash" | "recently-viewed" }[] = [
+  { id: "keep", label: "Keep it", icon: "checkmark" },
+  { id: "now", label: "Trash right away", icon: "trash" },
+  { id: "countdown", label: "Trash after a countdown", icon: "recently-viewed" },
+];
+const rule = ref<TrashRule | null>(null);
+const backlog = ref<{ count: number; bytes: number } | null>(null);
+const ruleError = ref<unknown>(null);
+
+async function saveRule() {
+  try {
+    await api.saveTrashRule(rule.value!);
+    ruleError.value = null;
+  } catch (e) {
+    ruleError.value = e;
+  }
+}
+
+async function chooseRule(id: TrashRule["afterWatching"]) {
+  const wasKeep = rule.value!.afterWatching === "keep";
+  rule.value!.afterWatching = id;
+  await saveRule();
+  backlog.value = null;
+  if (wasKeep && id !== "keep") {
+    const found = await api.trashBacklog().catch(() => null);
+    if (found?.count) backlog.value = found;
+  }
+}
+
+function stepDays(by: number) {
+  rule.value!.days = Math.min(365, Math.max(1, rule.value!.days + by));
+  saveRule();
+}
+
+async function trashBacklog() {
+  backlog.value = null;
+  try {
+    await api.scheduleBacklog();
+  } catch (e) {
+    ruleError.value = e;
+  }
+}
+
 const autoplayNext = ref<boolean | null>(null);
+const ownMpv = ref(false);
 const error = ref<unknown>(null);
+
+const seed = ref<boolean | null>(null);
+const seedError = ref<unknown>(null);
+
+async function saveSeed() {
+  try {
+    await api.setSeeding(seed.value!);
+    seedError.value = null;
+  } catch (e) {
+    seedError.value = e;
+    seed.value = !seed.value;
+  }
+}
 
 const magnetIsUs = ref<boolean | null>(null);
 const magnetSettingsOpened = ref(false);
@@ -53,21 +121,26 @@ onUnmounted(() => window.removeEventListener("focus", checkMagnet));
 onMounted(async () => {
   window.addEventListener("focus", checkMagnet);
   checkMagnet();
+  api.trashRule().then((r) => (rule.value = r), (e) => (ruleError.value = e));
+  api.seeding().then((on) => (seed.value = on), (e) => (seedError.value = e));
   try {
-    autoplayNext.value = (await api.playbackSettings()).autoplayNext;
+    const settings = await api.playbackSettings();
+    autoplayNext.value = settings.autoplayNext;
+    ownMpv.value = settings.ownMpv;
   } catch (e) {
     error.value = e;
   }
 });
 
-async function save() {
+async function save(changed: "autoplayNext" | "ownMpv") {
   if (autoplayNext.value == null) return;
   try {
-    await api.savePlaybackSettings({ autoplayNext: autoplayNext.value });
+    await api.savePlaybackSettings({ autoplayNext: autoplayNext.value, ownMpv: ownMpv.value });
     error.value = null;
   } catch (e) {
     error.value = e;
-    autoplayNext.value = !autoplayNext.value;
+    if (changed === "autoplayNext") autoplayNext.value = !autoplayNext.value;
+    else ownMpv.value = !ownMpv.value;
   }
 }
 </script>
@@ -112,27 +185,130 @@ async function save() {
         title="Magnet links"
         subtitle="Clicking a magnet link in your browser opens it here, ready to download."
       />
-      <p v-if="magnetIsUs">cardamoi opens magnet links.</p>
+      <p v-if="magnetIsUs">Cardamoi opens magnet links.</p>
       <div v-else-if="magnetIsUs === false" class="space-y-8">
         <button class="btn btn-secondary" @click="useForMagnets">
-          Use cardamoi for magnet links <Icon name="magnet" />
+          Use Cardamoi for magnet links <Icon name="magnet" />
         </button>
         <p v-if="magnetSettingsOpened" class="text-ink-2">
-          Windows needs you to finish this in Settings: choose cardamoi for MAGNET in the window that opened.
+          Windows needs you to finish this in Settings: choose Cardamoi for MAGNET in the window that opened.
         </p>
       </div>
       <ErrorNote v-if="magnetError" :error="magnetError" />
     </section>
 
+    <section class="space-y-21" aria-labelledby="updates-heading">
+      <SectionHeader
+        id="updates-heading"
+        title="Updates"
+        subtitle="Cardamoi checks for a new version when it opens and every few hours, and downloads it in the background."
+      />
+      <div v-if="readyUpdate" class="space-y-8">
+        <p>
+          Cardamoi {{ readyUpdate.version }} is ready.
+          <button type="button" class="link inline-flex items-center gap-1" @click="openRelease(readyUpdate.version)">
+            What's new <Icon name="external-link" />
+          </button>
+        </p>
+        <button class="btn btn-secondary" :disabled="installing" @click="installUpdate">
+          {{ installing ? "Installing…" : "Restart to Update" }} <Icon name="renew" />
+        </button>
+      </div>
+      <div v-else class="space-y-8">
+        <p>
+          <template v-if="checkState === 'upToDate'">You're on the latest version, </template>
+          <template v-else>You're on </template>
+          <button v-if="currentVersion" type="button" class="link" @click="openRelease(currentVersion)">
+            Cardamoi {{ currentVersion }}</button
+          >.
+        </p>
+        <button class="btn btn-ghost" :disabled="checkState === 'checking'" @click="checkForUpdate">
+          {{ checkState === "checking" ? "Checking…" : "Check for updates" }} <Icon name="renew" />
+        </button>
+        <p v-if="checkState === 'dev'" class="text-ink-2">Dev builds don't update themselves.</p>
+      </div>
+      <p class="text-ink-2">
+        Every version and its release notes are on GitHub.
+        <button type="button" class="link inline-flex items-center gap-1" @click="openAllReleases">
+          See all releases <Icon name="external-link" />
+        </button>
+      </p>
+      <ErrorNote v-if="checkState === 'failed'" :error="`Couldn't check for updates: ${checkError}`" />
+    </section>
+
+    <section class="space-y-21" aria-labelledby="storage-heading">
+      <SectionHeader id="storage-heading" title="Storage" subtitle="Media in the Trash uses disk space until you empty it." />
+      <div v-if="rule" class="space-y-13">
+        <p id="after-watching" class="font-semibold">After I finish something</p>
+        <div class="flex flex-wrap gap-2" role="group" aria-labelledby="after-watching">
+          <button
+            v-for="a in afterWatching"
+            :key="a.id"
+            class="rule-choice"
+            :aria-pressed="rule.afterWatching === a.id"
+            @click="chooseRule(a.id)"
+          >
+            <Icon :name="a.icon" /> {{ a.label }}
+          </button>
+        </div>
+        <div v-if="rule.afterWatching === 'countdown'" class="flex items-center gap-2">
+          <div class="stepper tabular-nums" role="group" aria-label="Days">
+            <button class="btn-icon" aria-label="Fewer days" @click="stepDays(-1)"><Icon name="subtract" /></button>
+            <span>{{ rule.days }} {{ rule.days === 1 ? "day" : "days" }}</span>
+            <button class="btn-icon" aria-label="More days" @click="stepDays(1)"><Icon name="add" /></button>
+          </div>
+          <span class="text-ink-2">after I finish it</span>
+        </div>
+        <div v-if="backlog" class="space-y-13 border border-line bg-background p-21" role="group" aria-labelledby="backlog-title">
+          <div>
+            <p id="backlog-title" class="font-semibold">
+              Also trash the <span class="tabular-nums">{{ backlog.count }}</span> you've already finished?
+            </p>
+            <p class="text-ink-2">They take <span class="tabular-nums">{{ formatBytes(backlog.bytes) }}</span>.</p>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-primary" @click="trashBacklog">Trash them too <Icon name="trash" /></button>
+            <button class="btn btn-secondary" @click="backlog = null">Only new ones</button>
+          </div>
+        </div>
+      </div>
+      <ErrorNote v-if="ruleError" :error="ruleError" />
+    </section>
+
+    <section class="space-y-21" aria-labelledby="downloads-heading">
+      <SectionHeader id="downloads-heading" title="Downloads" />
+      <label v-if="seed != null" class="flex items-start gap-4">
+        <input v-model="seed" type="checkbox" class="toggle" @change="saveSeed" />
+        <span>
+          Seed finished downloads
+          <span class="mt-1 block text-ink-2">
+            Keeps uploading finished torrents to other people while cardamoi is open. Seeding uses network, memory and
+            battery.
+          </span>
+        </span>
+      </label>
+      <ErrorNote v-if="seedError" :error="seedError" />
+    </section>
+
     <section class="space-y-21" aria-labelledby="playback-heading">
       <SectionHeader id="playback-heading" title="Playback" />
       <label v-if="autoplayNext != null" class="flex items-start gap-4">
-        <input v-model="autoplayNext" type="checkbox" class="toggle" @change="save" />
+        <input v-model="autoplayNext" type="checkbox" class="toggle" @change="save('autoplayNext')" />
         <span>
           Play the next episode automatically
           <span class="mt-1 block text-ink-2">
             When an episode ends and the next one is downloaded, it starts after 10 seconds. Press Esc to stay, or Return
             to start it straight away.
+          </span>
+        </span>
+      </label>
+      <label v-if="autoplayNext != null" class="flex items-start gap-4">
+        <input v-model="ownMpv" type="checkbox" class="toggle" @change="save('ownMpv')" />
+        <span>
+          Use my own mpv
+          <span class="mt-1 block text-ink-2">
+            Plays with the mpv installed on this computer, with your mpv.conf and scripts, in its own window. Off,
+            cardamoi plays videos itself and needs nothing installed.
           </span>
         </span>
       </label>
@@ -161,6 +337,23 @@ async function save() {
   font-weight: 600;
   border-color: var(--c-ink);
   box-shadow: inset 0 0 0 1px var(--c-ink);
+}
+.rule-choice {
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 13px;
+  border: 1px solid var(--c-line);
+  color: var(--c-ink-muted);
+}
+.rule-choice:hover {
+  color: var(--c-ink);
+}
+.rule-choice[aria-pressed="true"] {
+  color: var(--c-surface);
+  background: var(--c-ink);
+  border-color: var(--c-ink);
 }
 .theme-swatch {
   display: grid;

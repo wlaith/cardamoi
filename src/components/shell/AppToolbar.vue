@@ -9,11 +9,12 @@ import Kbd from "../ui/Kbd.vue";
 import TabList from "../ui/TabList.vue";
 import StatusDisplay from "./StatusDisplay.vue";
 
-type Place = "upnext" | "films" | "shows";
+type Place = "upnext" | "films" | "shows" | "watchlist";
 const places: { id: Place; label: string; title: string }[] = [
   { id: "upnext", label: "Up next", title: "Up Next (⌥⌘1)" },
   { id: "films", label: "Films", title: "Films (⌥⌘2)" },
   { id: "shows", label: "Shows", title: "TV Shows (⌥⌘3)" },
+  { id: "watchlist", label: "Watchlist", title: "Watchlist (⌥⌘4)" },
 ];
 
 const place = computed<Place | null>({
@@ -24,7 +25,7 @@ const place = computed<Place | null>({
 
 <template>
   <header class="header flex shrink-0 items-center gap-2 pr-13">
-    <button class="header-brand" aria-label="cardamoi, Up Next" @click="go({ name: 'upnext' })">
+    <button class="header-brand" aria-label="Cardamoi, Up Next" @click="go({ name: 'upnext' })">
       <img :src="lockupInk" alt="" class="logo-ink" draggable="false" />
       <img :src="lockupPaper" alt="" class="logo-paper" draggable="false" />
     </button>
@@ -49,7 +50,7 @@ const place = computed<Place | null>({
     </button>
 
     <StatusDisplay />
-    <button class="header-action" aria-label="Help" title="cardamoi Help (⇧⌘/)" @click="go({ name: 'help' })">
+    <button class="header-action" aria-label="Help" title="Cardamoi Help (⇧⌘/)" @click="go({ name: 'help' })">
       <Icon name="help" />
     </button>
     <button class="header-action" aria-label="Preferences" title="Preferences (⌘,)" @click="go({ name: 'preferences', pane: 'general' })">

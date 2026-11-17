@@ -3,7 +3,7 @@ import { computed, ref, watch } from "vue";
 import { api, episodeLabel, formatBytes, plainError, type CatalogTitle, type Found } from "../api";
 import { go } from "../nav";
 import { availability, bestRelease, qualityRank, rankReleases } from "../releases";
-import { announce, refresh } from "../store";
+import { announce } from "../store";
 import ErrorNote from "./ui/ErrorNote.vue";
 import Icon from "./ui/Icon.vue";
 import Notification from "./ui/Notification.vue";
@@ -98,7 +98,6 @@ async function download(r: Found) {
     });
     adding.value[r.torrent_url] = "added";
     announce(`Downloading ${props.title.title} ${episodeLabel(props.season ?? null, props.episode ?? null)}`.trim());
-    refresh();
   } catch (e) {
     adding.value[r.torrent_url] = plainError(e).message;
   }

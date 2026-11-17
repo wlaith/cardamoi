@@ -1,12 +1,23 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { api, episodeLabel, formatBytes, timeLeft, type CatalogTitle, type Details, type Episode } from "../../api";
-import { moveToTrash, play, retry, setSeasonWatched, showMenu, subtitles, videoMenu } from "../../commands";
+import {
+  cancelTrashTimer,
+  moveToTrash,
+  play,
+  retry,
+  setSeasonWatched,
+  showMenu,
+  subtitles,
+  trashLater,
+  videoMenu,
+} from "../../commands";
 import { episodeKey, groupLibrary, nextEpisode, type LocalEpisode } from "../../library";
 import { go } from "../../nav";
 import { entries, selection } from "../../store";
 import { canRetry, filmLine, resolvingText } from "../../status";
 import { isTmdbKeyError, noteTmdbError } from "../../tmdb";
+import { isSaved, save, unsave } from "../../watchlist";
 import { openMenuBelow } from "../../ui";
 import EpisodeDetails from "../EpisodeDetails.vue";
 import EpisodeTable, { type EpisodeRowData } from "../EpisodeTable.vue";
@@ -64,6 +75,7 @@ const rows = computed<EpisodeRowData[]>(() =>
 );
 const openEpisode = computed(() => episodes.value.find((e) => String(e.number) === openRow.value) ?? null);
 const seasonLocal = computed(() => [...local.value.values()].filter((e) => e.video.season === season.value));
+const seasonTimed = computed(() => seasonLocal.value.some((e) => e.video.trashAt != null));
 const seasonAllWatched = computed(() => seasonLocal.value.length > 0 && seasonLocal.value.every((e) => e.video.watched));
 const missingInSeason = computed(
   () => episodes.value.filter((e) => !localOf(e.number) && (!e.airDate || e.airDate <= today)).length,
@@ -134,6 +146,14 @@ const meta = computed(() => {
   return parts.join(" · ");
 });
 
+const saveable = computed(() => mine.value.length === 0);
+const onWatchlist = computed(() => isSaved(props.title));
+
+function toggleSaved() {
+  if (onWatchlist.value) unsave(shown.value);
+  else save(shown.value);
+}
+
 const more = ref<HTMLElement>();
 
 function moreMenu() {
@@ -192,6 +212,9 @@ watch(
             <button v-if="show" ref="more" class="btn-icon size-12" aria-label="More" aria-haspopup="menu" @click="moreMenu">
               <Icon name="overflow" />
             </button>
+            <button v-if="saveable" class="btn btn-ghost btn-lg" @click="toggleSaved">
+              {{ onWatchlist ? "On watchlist" : "Save to watchlist" }} <Icon :name="onWatchlist ? 'checkmark' : 'bookmark'" />
+            </button>
             <p v-if="next?.video.resumeAt != null" class="w-full text-ink-2">{{ timeLeft(next.video) }}</p>
           </div>
 
@@ -219,6 +242,12 @@ watch(
               <p class="mt-2 text-ink-2">{{ filmLine(filmEntry).text }}</p>
             </div>
           </template>
+
+          <div v-else-if="saveable" class="pt-2">
+            <button class="btn btn-ghost btn-lg -ml-2" @click="toggleSaved">
+              {{ onWatchlist ? "On watchlist" : "Save to watchlist" }} <Icon :name="onWatchlist ? 'checkmark' : 'bookmark'" />
+            </button>
+          </div>
 
           <ul v-if="show?.pending.length" class="max-w-xl space-y-2">
             <li v-for="p in show.pending" :key="p.id" class="notification" :class="{ 'notification-error': p.status === 'error' }">
@@ -263,6 +292,12 @@ watch(
         <span v-if="seasonLocal.length" class="text-ink-2">{{ seasonWatched }} of {{ episodes.length || seasonLocal.length }} watched</span>
         <button v-if="seasonLocal.length" class="btn btn-ghost btn-sm" @click="markSeason">
           Mark season as {{ seasonAllWatched ? "unwatched" : "watched" }} <Icon name="checkmark" />
+        </button>
+        <button v-if="seasonLocal.length && seasonTimed" class="btn btn-ghost btn-sm" @click="cancelTrashTimer(seasonLocal)">
+          Cancel timer <Icon name="close" />
+        </button>
+        <button v-else-if="seasonLocal.length" class="btn btn-ghost btn-sm" @click="trashLater(seasonLocal, `Season ${season}`)">
+          Trash season later… <Icon name="recently-viewed" />
         </button>
       </div>
       <p v-if="!details.seasons.length" class="text-ink-2">TMDB doesn't list any seasons for this show yet.</p>

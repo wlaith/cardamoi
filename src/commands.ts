@@ -1,7 +1,18 @@
-import { api, episodeLabel, isMpvMissing, magnetName, plainError, type CatalogTitle, type LibraryEntry, type NameLookup } from "./api";
+import {
+  api,
+  episodeLabel,
+  isMpvMissing,
+  magnetName,
+  plainError,
+  type CatalogTitle,
+  type LibraryEntry,
+  type NameLookup,
+  type VideoKey,
+} from "./api";
 import { nextEpisode, showKey, type LocalEpisode, type Show } from "./library";
 import { go } from "./nav";
 import { announce, hideEntries, refresh, selection, showEntries, startOpening, stopOpening, type Selected } from "./store";
+import { trashIn } from "./status";
 import { alertSheet, hud, sheet, type MenuEntry } from "./ui";
 
 export function videoLabel(ep: LocalEpisode) {
@@ -69,6 +80,21 @@ export async function setWatched(ep: LocalEpisode, watched: boolean) {
       api.markWatched(ep.entry.id, ep.video.fileIndex, was),
     );
   }
+}
+
+const keys = (videos: LocalEpisode[]) => videos.map((ep): VideoKey => [ep.entry.id, ep.video.fileIndex]);
+
+export function trashLater(videos: LocalEpisode[], name: string) {
+  sheet.value = { kind: "trashTimer", title: `Move ${name} to the Trash later`, name, videos };
+}
+
+export async function setTrashTimer(videos: LocalEpisode[], name: string, at: number) {
+  const ok = await attempt("The timer couldn't be set.", () => api.setTrashTimer(keys(videos), at));
+  if (ok) announce(`${name} goes to the ${trashIn(at)}`, () => api.clearTrashTimer(keys(videos)));
+}
+
+export function cancelTrashTimer(videos: LocalEpisode[]) {
+  attempt("The timer couldn't be cancelled.", () => api.setTrashTimer(keys(videos), null));
 }
 
 export async function setSeasonWatched(tmdbId: number, season: number, episodes: LocalEpisode[], watched: boolean) {
@@ -159,7 +185,6 @@ export async function addMagnet(
       season: show ? (at?.season ?? null) : null,
       episode: show ? (at?.episode ?? null) : null,
     });
-    await refresh();
     announce(`Added "${title?.title || magnetName(link) || "magnet link"}" to Downloads`);
     return null;
   } catch (e) {
@@ -179,7 +204,6 @@ export async function checkFolder() {
   try {
     const added = await api.scanLibraryFolder();
     announce(added ? `Added ${added} ${added === 1 ? "video" : "videos"} from the folder` : "No new videos in the folder");
-    await refresh();
   } catch (e) {
     showError("The folder couldn't be checked.", e);
   }
@@ -251,6 +275,15 @@ export function videoMenu(ep: LocalEpisode, opts: { open?: () => void } = {}): M
   else if (e.status === "paused") items.push({ label: "Resume Download", action: () => resume(e) });
   else if (e.status === "error") items.push({ label: "Try Download Again", action: () => retry(e) });
   if (items[items.length - 1] !== "separator") items.push("separator");
+  const name = `"${videoLabel(ep)}"`;
+  if (v.trashAt != null) {
+    items.push(
+      { label: "Change Trash Timer…", action: () => trashLater([ep], name) },
+      { label: "Cancel Trash Timer", action: () => cancelTrashTimer([ep]) },
+    );
+  } else {
+    items.push({ label: "Move to Trash Later…", action: () => trashLater([ep], name) });
+  }
   items.push({ label: "Move to Trash", action: () => moveToTrash(e), danger: true });
   return items;
 }

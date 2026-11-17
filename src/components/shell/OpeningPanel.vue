@@ -12,7 +12,7 @@ defineProps<{ label: string }>();
     <div class="min-w-0 flex-1">
       <p class="eyebrow">Opening</p>
       <p class="truncate font-semibold">{{ label }}</p>
-      <p class="truncate text-ink-2">Plays in its own window.</p>
+      <p class="truncate text-ink-2">Starting playback.</p>
     </div>
     <button class="btn-icon self-start" aria-label="Dismiss" @click="stopOpening()"><Icon name="close" /></button>
   </section>

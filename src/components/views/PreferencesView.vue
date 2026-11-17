@@ -26,7 +26,7 @@ const current = computed<PreferencesPane | null>({
 <template>
   <div class="space-y-55 p-34">
     <div class="space-y-21">
-      <PageHeader title="Preferences" subtitle="Where cardamoi looks up titles and finds releases, subtitles and playback." />
+      <PageHeader title="Preferences" subtitle="Where Cardamoi looks up titles and finds releases, subtitles and playback." />
       <TabList v-model="current" :items="panes" label="Preferences" />
     </div>
     <GeneralPane v-if="pane === 'general'" />

@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { computed, ref, watch, type Ref } from "vue";
-import { api, formatBytes, plainError, type LibraryEntry, type PlayerState } from "./api";
+import { api, formatBytes, onLibraryChange, plainError, type LibraryEntry, type PlayerState } from "./api";
+import { refreshDelay } from "./sync";
 import { groupLibrary, type LocalEpisode, type Show } from "./library";
 
 export const entries = ref<LibraryEntry[]>([]);
@@ -10,11 +11,33 @@ export const loaded = ref(false);
 export const shelf = computed(() => groupLibrary(entries.value));
 
 const leaving = new Set<number>();
+let lastJson = "";
+let running: Promise<void> | null = null;
+let again = false;
 
-export async function refresh() {
+export function refresh(): Promise<void> {
+  if (running) {
+    again = true;
+    return running;
+  }
+  running = (async () => {
+    do {
+      again = false;
+      await read();
+    } while (again);
+  })().finally(() => (running = null));
+  return running;
+}
+
+async function read() {
   try {
     const all = await api.library();
-    entries.value = leaving.size ? all.filter((e) => !leaving.has(e.id)) : all;
+    const next = leaving.size ? all.filter((e) => !leaving.has(e.id)) : all;
+    const json = JSON.stringify(next);
+    if (json !== lastJson) {
+      lastJson = json;
+      entries.value = next;
+    }
     loadError.value = "";
   } catch (e) {
     loadError.value = plainError(e).message;
@@ -41,6 +64,11 @@ export const playing = computed(
   () => !!player.value && (player.value.status === "opening" || player.value.status === "playing"),
 );
 
+/** The built-in player is up, drawing its own controls over the picture. */
+export const embedded = computed(
+  () => player.value?.mode === "embedded" && ["opening", "playing", "ended"].includes(player.value.status),
+);
+
 export const opening = ref<{ itemId: number; fileIndex: number; label: string } | null>(null);
 let openingTimer: number | undefined;
 
@@ -62,6 +90,7 @@ watch(player, (p) => {
 export function hideEntries(ids: number[]) {
   ids.forEach((id) => leaving.add(id));
   entries.value = entries.value.filter((e) => !leaving.has(e.id));
+  lastJson = "";
 }
 
 export function showEntries(ids: number[]) {
@@ -171,14 +200,31 @@ export const columns = remembered<number>(
 );
 
 export function startSync(): () => void {
-  refresh();
-  const timer = window.setInterval(refresh, 1000);
+  let timer = 0;
+  let stopped = false;
+  const tick = async () => {
+    if (document.visibilityState !== "hidden") await refresh();
+    window.clearTimeout(timer);
+    if (!stopped) timer = window.setTimeout(tick, refreshDelay(entries.value, playing.value));
+  };
+  const kick = () => {
+    window.clearTimeout(timer);
+    tick();
+  };
+  tick();
+  const stopChanges = onLibraryChange(kick);
+  const stopEnded = watch(playing, (on) => on || kick());
+  window.addEventListener("focus", kick);
   api.playerState().then((p) => (player.value = p), () => {});
   const unlisten = listen<PlayerState>("player://state", (event) => (player.value = event.payload));
   window.addEventListener("beforeunload", dismissNotice);
   return () => {
     window.removeEventListener("beforeunload", dismissNotice);
-    window.clearInterval(timer);
+    window.removeEventListener("focus", kick);
+    stopped = true;
+    window.clearTimeout(timer);
+    stopChanges();
+    stopEnded();
     unlisten.then((stop) => stop());
   };
 }

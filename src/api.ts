@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 
 export interface SearchResult {
   source: string;
@@ -45,6 +45,8 @@ export interface CatalogTitle {
   overview: string;
   rating: number | null;
 }
+
+export type Saved = Pick<CatalogTitle, "id" | "kind" | "title" | "year" | "poster">;
 
 export interface TmdbStatus {
   state: "missing" | "ok" | "rejected";
@@ -123,7 +125,15 @@ export interface VideoEntry {
   playable: boolean;
   readyInSecs: number | null;
   resumeAt: number | null;
+  trashAt: number | null;
 }
+
+export interface TrashRule {
+  afterWatching: "keep" | "now" | "countdown";
+  days: number;
+}
+
+export type VideoKey = [number, number];
 
 export interface Track {
   id: number;
@@ -134,6 +144,12 @@ export interface Track {
   selected: boolean;
   forced: boolean;
   hearingImpaired: boolean;
+}
+
+export interface PlaybackSettings {
+  autoplayNext: boolean;
+  /** Play with the mpv installed on this computer instead of the built-in player. */
+  ownMpv: boolean;
 }
 
 export interface PlayerState {
@@ -149,6 +165,16 @@ export interface PlayerState {
   tracks: Track[];
   subDelay: number;
   error: string | null;
+  mode: "embedded" | "window" | "external";
+  /** Where a resumed start picked up, for the player's own "Resumed at" line. */
+  resumedFrom: number | null;
+  bufferPercent: number | null;
+  /** 0 to 100. */
+  volume: number;
+  muted: boolean;
+  /** How far the cache reaches into the file, in seconds. */
+  cacheUntil: number | null;
+  nextUp: { title: string; secondsLeft: number } | null;
 }
 
 export interface SubtitleSettings {
@@ -196,6 +222,7 @@ export interface Quota {
 
 export type PlayError =
   | { kind: "mpvMissing" }
+  | { kind: "playerMissing" }
   | { kind: "fileMissing" }
   | { kind: "notReady" }
   | { kind: "other"; message: string };
@@ -227,8 +254,19 @@ export type ProwlarrStatus =
   | { state: "ready" }
   | { state: "failed"; message: string };
 
+const libraryListeners = new Set<() => void>();
+
+export function onLibraryChange(fn: () => void): () => void {
+  libraryListeners.add(fn);
+  return () => libraryListeners.delete(fn);
+}
+
+function changes<T>(cmd: string, args?: InvokeArgs): Promise<T> {
+  return invoke<T>(cmd, args).finally(() => libraryListeners.forEach((fn) => fn()));
+}
+
 export const api = {
-  search: (query: SearchQuery) => invoke<{ results: Found[]; errors: string[] }>("search", { query }),
+  search:(query: SearchQuery) => invoke<{ results: Found[]; errors: string[] }>("search", { query }),
   catalogSearch: (text: string) => invoke<CatalogTitle[]>("catalog_search", { text }),
   matchName: (name: string) => invoke<NameLookup>("match_name", { name }),
   titleDetails: (kind: Kind, id: number) => invoke<Details>("title_details", { kind, id }),
@@ -237,6 +275,7 @@ export const api = {
   saveTmdbKey: (key: string, skipCheck = false) => invoke<number>("save_tmdb_key", { key, skipCheck }),
   removeTmdbKey: () => invoke<void>("remove_tmdb_key"),
   markOnboardingSeen: () => invoke<void>("mark_onboarding_seen"),
+  updateReady: (version: string) => invoke<void>("update_ready", { version }),
   prowlarrStatus: () => invoke<ProwlarrStatus>("prowlarr_status"),
   openProwlarr: () => invoke<void>("open_prowlarr"),
   listSources: () => invoke<SourceRow[]>("list_sources"),
@@ -244,29 +283,29 @@ export const api = {
     invoke<void>("add_source", { name, url, apiKey }),
   setSourceEnabled: (id: number, enabled: boolean) => invoke<void>("set_source_enabled", { id, enabled }),
   removeSource: (id: number) => invoke<void>("remove_source", { id }),
-  addDownload: (req: AddRequest) => invoke<void>("add_download", { req }),
-  retryDownload: (id: number) => invoke<void>("retry_download", { id }),
-  scanLibraryFolder: () => invoke<number>("scan_library_folder"),
+  addDownload: (req: AddRequest) => changes<void>("add_download", { req }),
+  retryDownload: (id: number) => changes<void>("retry_download", { id }),
+  scanLibraryFolder: () => changes<number>("scan_library_folder"),
   takePendingMagnet: () => invoke<string | null>("take_pending_magnet"),
   magnetHandlerIsUs: () => invoke<boolean>("magnet_handler_is_us"),
   makeMagnetHandler: () => invoke<boolean>("make_magnet_handler"),
   openLibraryFolder: () => invoke<string>("open_library_folder"),
   library: () => invoke<LibraryEntry[]>("library"),
-  pause: (id: number) => invoke<void>("pause", { id }),
-  resume: (id: number) => invoke<void>("resume", { id }),
-  remove: (id: number) => invoke<void>("remove", { id }),
+  pause: (id: number) => changes<void>("pause", { id }),
+  resume: (id: number) => changes<void>("resume", { id }),
+  remove: (id: number) => changes<void>("remove", { id }),
   play: (id: number, fileIndex: number | null = null, fromStart = false) =>
-    invoke<void>("play", { id, fileIndex, fromStart }),
+    changes<void>("play", { id, fileIndex, fromStart }),
   openExternal: (id: number, fileIndex: number | null = null) => invoke<void>("open_external", { id, fileIndex }),
   playerState: () => invoke<PlayerState | null>("player_state"),
   playerCommand: (args: (string | number)[]) => invoke<void>("player_command", { args }),
-  stopPlayer: () => invoke<void>("stop_player"),
+  stopPlayer: () => changes<void>("stop_player"),
   markWatched: (id: number, fileIndex: number, watched: boolean) =>
-    invoke<void>("mark_watched", { id, fileIndex, watched }),
+    changes<void>("mark_watched", { id, fileIndex, watched }),
   markSeasonWatched: (tmdbId: number, season: number, watched: boolean) =>
-    invoke<void>("mark_season_watched", { tmdbId, season, watched }),
-  playbackSettings: () => invoke<{ autoplayNext: boolean }>("playback_settings"),
-  savePlaybackSettings: (settings: { autoplayNext: boolean }) => invoke<void>("save_playback_settings", { settings }),
+    changes<void>("mark_season_watched", { tmdbId, season, watched }),
+  playbackSettings: () => invoke<PlaybackSettings>("playback_settings"),
+  savePlaybackSettings: (settings: PlaybackSettings) => invoke<void>("save_playback_settings", { settings }),
   subtitleSettings: () => invoke<SubtitleSettings>("subtitle_settings"),
   saveSubtitleSettings: (settings: SubtitleSettings) => invoke<void>("save_subtitle_settings", { settings }),
   listSubtitles: (id: number, fileIndex: number) => invoke<Subtitle[]>("list_subtitles", { id, fileIndex }),
@@ -279,6 +318,18 @@ export const api = {
   downloadSubtitle: (id: number, fileIndex: number, found: FoundSubtitle) =>
     invoke<Subtitle>("download_subtitle", { id, fileIndex, found }),
   reveal: (id: number) => invoke<void>("reveal", { id }),
+  watchlist: () => invoke<Saved[]>("watchlist"),
+  saveToWatchlist: (title: Saved) => invoke<void>("save_to_watchlist", { title }),
+  removeFromWatchlist: (id: number, kind: Kind) => invoke<void>("remove_from_watchlist", { id, kind }),
+  trashRule: () => invoke<TrashRule>("trash_rule"),
+  saveTrashRule: (rule: TrashRule) => changes<void>("save_trash_rule", { rule }),
+  trashBacklog: () => invoke<{ count: number; bytes: number }>("trash_backlog"),
+  scheduleBacklog: () => changes<void>("schedule_backlog"),
+  /** `at` in Unix seconds, or null to keep them whatever the rule says. */
+  setTrashTimer: (targets: VideoKey[], at: number | null) => changes<void>("set_trash_timer", { targets, at }),
+  clearTrashTimer: (targets: VideoKey[]) => changes<void>("clear_trash_timer", { targets }),
+  seeding: () => invoke<boolean>("seeding"),
+  setSeeding: (on: boolean) => invoke<void>("set_seeding", { on }),
 };
 
 export function errorMessage(e: unknown): string {
@@ -305,7 +356,12 @@ export function plainError(e: unknown): { message: string; details: string } {
     switch (err.kind) {
       case "mpvMissing":
         return {
-          message: "cardamoi plays videos with mpv, which isn't installed. Install it with Homebrew (brew install mpv), or open this video in your system player.",
+          message: "You chose your own mpv, but it isn't installed. Install it (brew install mpv), or switch back to the built-in player in Preferences › General.",
+          details: "",
+        };
+      case "playerMissing":
+        return {
+          message: "Cardamoi's player is missing from this installation. Reinstall Cardamoi, or choose your own mpv in Preferences › General.",
           details: "",
         };
       case "fileMissing":
@@ -325,8 +381,11 @@ export function plainError(e: unknown): { message: string; details: string } {
   return { message: raw, details: "" };
 }
 
+/** Whether no player could start, so the system player is worth offering. */
 export function isMpvMissing(e: unknown): boolean {
-  return !!e && typeof e === "object" && "kind" in e && (e as PlayError).kind === "mpvMissing";
+  if (!e || typeof e !== "object" || !("kind" in e)) return false;
+  const kind = (e as PlayError).kind;
+  return kind === "mpvMissing" || kind === "playerMissing";
 }
 
 export const SUBTITLE_LANGUAGES = [

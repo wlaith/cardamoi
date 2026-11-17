@@ -70,7 +70,8 @@ const commands = computed<Row[]>(() => {
     { id: "go-upnext", label: "Go to Up Next", icon: "arrow-right", keys: "⌥⌘1", run: () => go({ name: "upnext" }) },
     { id: "go-films", label: "Go to Films", icon: "arrow-right", keys: "⌥⌘2", run: () => go({ name: "films" }) },
     { id: "go-shows", label: "Go to TV Shows", icon: "arrow-right", keys: "⌥⌘3", run: () => go({ name: "shows" }) },
-    { id: "go-downloads", label: "Go to Downloads", icon: "arrow-right", keys: "⌥⌘4", run: () => go({ name: "downloads" }) },
+    { id: "go-watchlist", label: "Go to Watchlist", icon: "arrow-right", keys: "⌥⌘4", run: () => go({ name: "watchlist" }) },
+    { id: "go-downloads", label: "Go to Downloads", icon: "arrow-right", keys: "⌥⌘5", run: () => go({ name: "downloads" }) },
     { id: "magnet", label: "Add magnet link", icon: "magnet", keys: "⌘U", run: () => (sheet.value = { kind: "magnet", link: "" }) },
     { id: "folder", label: "Open the library folder", icon: "folder", run: openFolder },
     { id: "scan", label: "Check the folder for new videos", icon: "renew", run: checkFolder },
@@ -92,7 +93,7 @@ const commands = computed<Row[]>(() => {
       ? { id: "tmdb", label: "TMDB key", icon: "key", run: () => go({ name: "preferences", pane: "tmdb" }) }
       : { id: "tmdb", label: "Set up TMDB", icon: "key", run: () => go({ name: "setup" }) },
     { id: "prefs", label: "Preferences", icon: "settings", keys: "⌘,", run: () => go({ name: "preferences", pane: "general" }) },
-    { id: "help", label: "cardamoi Help", icon: "help", keys: "⇧⌘/", run: () => go({ name: "help" }) },
+    { id: "help", label: "Cardamoi Help", icon: "help", keys: "⇧⌘/", run: () => go({ name: "help" }) },
   ];
   return words.value.length ? all.filter((c) => matches(c.label)).slice(0, 5) : all.slice(0, 7);
 });
