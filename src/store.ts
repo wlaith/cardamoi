@@ -10,11 +10,17 @@ export const loaded = ref(false);
 export const shelf = computed(() => groupLibrary(entries.value));
 
 const leaving = new Set<number>();
+let lastJson = "";
 
 export async function refresh() {
   try {
     const all = await api.library();
-    entries.value = leaving.size ? all.filter((e) => !leaving.has(e.id)) : all;
+    const next = leaving.size ? all.filter((e) => !leaving.has(e.id)) : all;
+    const json = JSON.stringify(next);
+    if (json !== lastJson) {
+      lastJson = json;
+      entries.value = next;
+    }
     loadError.value = "";
   } catch (e) {
     loadError.value = plainError(e).message;
@@ -67,6 +73,7 @@ watch(player, (p) => {
 export function hideEntries(ids: number[]) {
   ids.forEach((id) => leaving.add(id));
   entries.value = entries.value.filter((e) => !leaving.has(e.id));
+  lastJson = "";
 }
 
 export function showEntries(ids: number[]) {
