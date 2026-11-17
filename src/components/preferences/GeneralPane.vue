@@ -80,6 +80,19 @@ const autoplayNext = ref<boolean | null>(null);
 const ownMpv = ref(false);
 const error = ref<unknown>(null);
 
+const seed = ref<boolean | null>(null);
+const seedError = ref<unknown>(null);
+
+async function saveSeed() {
+  try {
+    await api.setSeeding(seed.value!);
+    seedError.value = null;
+  } catch (e) {
+    seedError.value = e;
+    seed.value = !seed.value;
+  }
+}
+
 const magnetIsUs = ref<boolean | null>(null);
 const magnetSettingsOpened = ref(false);
 const magnetError = ref<unknown>(null);
@@ -109,6 +122,7 @@ onMounted(async () => {
   window.addEventListener("focus", checkMagnet);
   checkMagnet();
   api.trashRule().then((r) => (rule.value = r), (e) => (ruleError.value = e));
+  api.seeding().then((on) => (seed.value = on), (e) => (seedError.value = e));
   try {
     const settings = await api.playbackSettings();
     autoplayNext.value = settings.autoplayNext;
@@ -259,6 +273,21 @@ async function save(changed: "autoplayNext" | "ownMpv") {
         </div>
       </div>
       <ErrorNote v-if="ruleError" :error="ruleError" />
+    </section>
+
+    <section class="space-y-21" aria-labelledby="downloads-heading">
+      <SectionHeader id="downloads-heading" title="Downloads" />
+      <label v-if="seed != null" class="flex items-start gap-4">
+        <input v-model="seed" type="checkbox" class="toggle" @change="saveSeed" />
+        <span>
+          Seed finished downloads
+          <span class="mt-1 block text-ink-2">
+            Keeps uploading finished torrents to other people while cardamoi is open. Seeding uses network, memory and
+            battery.
+          </span>
+        </span>
+      </label>
+      <ErrorNote v-if="seedError" :error="seedError" />
     </section>
 
     <section class="space-y-21" aria-labelledby="playback-heading">

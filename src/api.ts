@@ -328,6 +328,8 @@ export const api = {
   /** `at` in Unix seconds, or null to keep them whatever the rule says. */
   setTrashTimer: (targets: VideoKey[], at: number | null) => changes<void>("set_trash_timer", { targets, at }),
   clearTrashTimer: (targets: VideoKey[]) => changes<void>("clear_trash_timer", { targets }),
+  seeding: () => invoke<boolean>("seeding"),
+  setSeeding: (on: boolean) => invoke<void>("set_seeding", { on }),
 };
 
 export function errorMessage(e: unknown): string {

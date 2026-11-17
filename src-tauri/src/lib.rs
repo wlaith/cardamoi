@@ -967,6 +967,63 @@ async fn trash_due(app: AppHandle) {
     }
 }
 
+fn stops_seeding(seed: bool, finished: bool, state: &TorrentStatsState, playing: bool) -> bool {
+    !seed && finished && matches!(state, TorrentStatsState::Live) && !playing
+}
+
+fn seeds(state: &AppState) -> bool {
+    db::get_setting(&state.db.lock().unwrap(), "seed").ok().flatten().as_deref() == Some("1")
+}
+
+fn all_torrents(state: &AppState) -> Vec<Arc<ManagedTorrent>> {
+    state.session.with_torrents(|torrents| torrents.map(|(_, handle)| handle.clone()).collect())
+}
+
+async fn stop_seeding(state: &AppState) {
+    let seed = seeds(state);
+    let open = state
+        .player
+        .state()
+        .filter(|p| !matches!(p.status, "stopped" | "failed" | "crashed"))
+        .and_then(|p| db::get(&state.db.lock().unwrap(), p.item_id).ok())
+        .map(|item| item.info_hash);
+    for handle in all_torrents(state) {
+        let stats = handle.stats();
+        let playing = open.as_deref() == Some(handle.info_hash().as_string().as_str());
+        if stops_seeding(seed, stats.finished, &stats.state, playing) {
+            let _ = state.session.pause(&handle).await;
+        }
+    }
+}
+
+async fn seeding_rule(app: AppHandle) {
+    loop {
+        stop_seeding(&app.state::<AppState>()).await;
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    }
+}
+
+#[tauri::command]
+fn seeding(state: State<'_, AppState>) -> bool {
+    seeds(&state)
+}
+
+#[tauri::command]
+async fn set_seeding(state: State<'_, AppState>, on: bool) -> CmdResult<()> {
+    db::set_setting(&state.db.lock().unwrap(), "seed", if on { "1" } else { "0" }).map_err(err)?;
+    if !on {
+        stop_seeding(&state).await;
+        return Ok(());
+    }
+    for handle in all_torrents(&state) {
+        let stats = handle.stats();
+        if stats.finished && matches!(stats.state, TorrentStatsState::Paused) {
+            state.session.unpause(&handle).await.map_err(err)?;
+        }
+    }
+    Ok(())
+}
+
 #[derive(Serialize)]
 struct Backlog {
     count: u32,
@@ -1677,6 +1734,7 @@ pub fn run() {
             tauri::async_runtime::spawn(identify_unmatched(app.handle().clone()));
             tauri::async_runtime::spawn(watch_folder(app.handle().clone()));
             tauri::async_runtime::spawn(trash_due(app.handle().clone()));
+            tauri::async_runtime::spawn(seeding_rule(app.handle().clone()));
             app.set_menu(build_menu(app.handle())?)?;
             app.on_menu_event(|app, event| {
                 let _ = app.emit("menu", event.id().0.as_str());
@@ -1693,6 +1751,8 @@ pub fn run() {
             trash_backlog,
             schedule_backlog,
             set_trash_timer,
+            seeding,
+            set_seeding,
             clear_trash_timer,
             catalog_search,
             match_name,
@@ -1751,6 +1811,15 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stops_seeding_only_finished_live_torrents_when_seeding_is_off() {
+        assert!(stops_seeding(false, true, &TorrentStatsState::Live, false));
+        assert!(!stops_seeding(true, true, &TorrentStatsState::Live, false));
+        assert!(!stops_seeding(false, false, &TorrentStatsState::Live, false));
+        assert!(!stops_seeding(false, true, &TorrentStatsState::Paused, false));
+        assert!(!stops_seeding(false, true, &TorrentStatsState::Live, true));
+    }
 
     fn pick(files: &[(&str, u64)]) -> Option<usize> {
         best_video(files.iter().enumerate().map(|(i, (p, len))| (i, Path::new(*p), *len)))
