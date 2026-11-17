@@ -9,11 +9,12 @@ import Kbd from "../ui/Kbd.vue";
 import TabList from "../ui/TabList.vue";
 import StatusDisplay from "./StatusDisplay.vue";
 
-type Place = "upnext" | "films" | "shows";
+type Place = "upnext" | "films" | "shows" | "watchlist";
 const places: { id: Place; label: string; title: string }[] = [
   { id: "upnext", label: "Up next", title: "Up Next (⌥⌘1)" },
   { id: "films", label: "Films", title: "Films (⌥⌘2)" },
   { id: "shows", label: "Shows", title: "TV Shows (⌥⌘3)" },
+  { id: "watchlist", label: "Watchlist", title: "Watchlist (⌥⌘4)" },
 ];
 
 const place = computed<Place | null>({

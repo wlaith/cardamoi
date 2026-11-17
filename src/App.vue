@@ -31,6 +31,7 @@ import TmdbBanner from "./components/shell/TmdbBanner.vue";
 import Toast from "./components/shell/Toast.vue";
 import UpdateBanner from "./components/shell/UpdateBanner.vue";
 import { installUpdate, startUpdateChecks } from "./updates";
+import { loadWatchlist } from "./watchlist";
 import ErrorNote from "./components/ui/ErrorNote.vue";
 import Loader from "./components/ui/Loader.vue";
 import OpeningPanel from "./components/shell/OpeningPanel.vue";
@@ -44,6 +45,7 @@ import SearchView from "./components/views/SearchView.vue";
 import SetupView from "./components/views/SetupView.vue";
 import TitleView from "./components/views/TitleView.vue";
 import UpNextView from "./components/views/UpNextView.vue";
+import WatchlistView from "./components/views/WatchlistView.vue";
 
 const main = ref<HTMLElement>();
 const selected = computed(() => videoOf(selection.value));
@@ -89,6 +91,8 @@ function onMenu(id: string) {
       return go({ name: "films" });
     case "go-shows":
       return go({ name: "shows" });
+    case "go-watchlist":
+      return go({ name: "watchlist" });
     case "go-downloads":
       return go({ name: "downloads" });
     case "back":
@@ -171,6 +175,7 @@ async function offerSetup() {
 
 onMounted(() => {
   offerSetup();
+  loadWatchlist();
   openPendingMagnet();
   document.documentElement.classList.toggle("mac", navigator.userAgent.includes("Mac"));
   stopSync = startSync();
@@ -206,6 +211,7 @@ onUnmounted(() => {
         <UpNextView v-else-if="route.name === 'upnext'" />
         <LibraryView v-else-if="route.name === 'films'" kind="film" />
         <LibraryView v-else-if="route.name === 'shows'" kind="show" />
+        <WatchlistView v-else-if="route.name === 'watchlist'" />
         <DownloadsView v-else-if="route.name === 'downloads'" />
         <SearchView v-else-if="route.name === 'search'" :query="route.query" />
         <TitleView v-else-if="route.name === 'title'" :key="`${route.title.kind}:${route.title.id}`" :title="route.title" />
