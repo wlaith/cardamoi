@@ -34,6 +34,9 @@ pub struct Video {
     pub duration_secs: Option<f64>,
     pub watched: bool,
     pub last_played_at: Option<i64>,
+    pub watched_at: Option<i64>,
+    #[serde(skip)]
+    pub timer: Option<Option<i64>>,
 }
 
 pub struct NewVideo {
@@ -124,6 +127,13 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
             -- The provider's id for it, so search results can show it is already here.
             provider_key      TEXT,
             UNIQUE (item_id, path)
+        );
+        -- Timers set by hand. A NULL trash_at keeps the video whatever the rule says.
+        CREATE TABLE IF NOT EXISTS trash_timers (
+            item_id     INTEGER NOT NULL,
+            file_index  INTEGER NOT NULL,
+            trash_at    INTEGER,
+            PRIMARY KEY (item_id, file_index)
         );",
     )?;
     for (table, column, ty) in [
@@ -161,6 +171,10 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
                  FROM playback_old;
              DROP TABLE playback_old;",
         )?;
+    }
+    // After the move above, which rebuilds playback.
+    if !has_column(&conn, "playback", "watched_at")? {
+        conn.execute("ALTER TABLE playback ADD COLUMN watched_at INTEGER", [])?;
     }
     conn.execute("DROP TABLE IF EXISTS flaresolverr", [])?;
     Ok(conn)
@@ -279,8 +293,10 @@ pub fn save_videos(conn: &Connection, item_id: i64, videos: &[NewVideo], main: i
 }
 
 const VIDEO_SELECT: &str = "SELECT v.item_id, v.file_index, v.path, v.len, v.season, v.episode,
-            COALESCE(p.position_secs, 0), p.duration_secs, COALESCE(p.watched, 0), p.updated_at
-     FROM videos v LEFT JOIN playback p ON p.item_id = v.item_id AND p.file_index = v.file_index";
+            COALESCE(p.position_secs, 0), p.duration_secs, COALESCE(p.watched, 0), p.updated_at, p.watched_at,
+            t.item_id IS NOT NULL, t.trash_at
+     FROM videos v LEFT JOIN playback p ON p.item_id = v.item_id AND p.file_index = v.file_index
+     LEFT JOIN trash_timers t ON t.item_id = v.item_id AND t.file_index = v.file_index";
 
 fn row_to_video(r: &rusqlite::Row) -> rusqlite::Result<Video> {
     Ok(Video {
@@ -294,6 +310,8 @@ fn row_to_video(r: &rusqlite::Row) -> rusqlite::Result<Video> {
         duration_secs: r.get(7)?,
         watched: r.get(8)?,
         last_played_at: r.get(9)?,
+        watched_at: r.get(10)?,
+        timer: if r.get(11)? { Some(r.get(12)?) } else { None },
     })
 }
 
@@ -306,10 +324,11 @@ pub fn videos_for(conn: &Connection, item_id: i64) -> rusqlite::Result<Vec<Video
 
 pub fn set_season_watched(conn: &Connection, tmdb_id: i64, season: u32, watched: bool) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO playback (item_id, file_index, watched)
-             SELECT v.item_id, v.file_index, ?3 FROM videos v JOIN items i ON i.id = v.item_id
+        "INSERT INTO playback (item_id, file_index, watched, watched_at)
+             SELECT v.item_id, v.file_index, ?3, CASE WHEN ?3 THEN unixepoch() END FROM videos v JOIN items i ON i.id = v.item_id
              WHERE i.tmdb_id = ?1 AND i.kind = 'tv' AND v.season = ?2
-         ON CONFLICT(item_id, file_index) DO UPDATE SET watched = excluded.watched, updated_at = unixepoch()",
+         ON CONFLICT(item_id, file_index) DO UPDATE SET watched = excluded.watched, updated_at = unixepoch(),
+             watched_at = CASE WHEN excluded.watched THEN COALESCE(playback.watched_at, unixepoch()) END",
         params![tmdb_id, season, watched],
     )?;
     Ok(())
@@ -428,8 +447,9 @@ pub fn save_position(
 
 pub fn set_watched(conn: &Connection, item_id: i64, file_index: i64, watched: bool) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO playback (item_id, file_index, watched) VALUES (?1, ?2, ?3)
-         ON CONFLICT(item_id, file_index) DO UPDATE SET watched = excluded.watched, updated_at = unixepoch()",
+        "INSERT INTO playback (item_id, file_index, watched, watched_at) VALUES (?1, ?2, ?3, CASE WHEN ?3 THEN unixepoch() END)
+         ON CONFLICT(item_id, file_index) DO UPDATE SET watched = excluded.watched, updated_at = unixepoch(),
+             watched_at = CASE WHEN excluded.watched THEN COALESCE(playback.watched_at, unixepoch()) END",
         params![item_id, file_index, watched],
     )?;
     Ok(())
@@ -478,6 +498,86 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> rusqlite::Resul
         "INSERT INTO settings (key, value) VALUES (?1, ?2)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         params![key, value],
+    )?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Rule {
+    pub after_watching: String,
+    pub days: u32,
+}
+
+pub fn get_rule(conn: &Connection) -> rusqlite::Result<Rule> {
+    let after_watching = get_setting(conn, "after_watching")?.unwrap_or_else(|| "keep".into());
+    let days = get_setting(conn, "after_watching_days")?.and_then(|d| d.parse().ok()).unwrap_or(3);
+    Ok(Rule { after_watching, days })
+}
+
+pub fn set_rule(conn: &Connection, rule: &Rule) -> rusqlite::Result<()> {
+    set_setting(conn, "after_watching", &rule.after_watching)?;
+    set_setting(conn, "after_watching_days", &rule.days.to_string())
+}
+
+pub fn trash_at(video: &Video, rule: &Rule) -> Option<i64> {
+    if let Some(timer) = video.timer {
+        return timer;
+    }
+    let delay = match rule.after_watching.as_str() {
+        "now" => 0,
+        "countdown" => rule.days as i64 * 86_400,
+        _ => return None,
+    };
+    if !video.watched {
+        return None;
+    }
+    video.watched_at.map(|at| at + delay)
+}
+
+pub fn all_videos(conn: &Connection) -> rusqlite::Result<Vec<Video>> {
+    let mut stmt = conn.prepare(VIDEO_SELECT)?;
+    let rows = stmt.query_map([], row_to_video)?;
+    rows.collect()
+}
+
+pub fn set_timer(conn: &Connection, item_id: i64, file_index: i64, trash_at: Option<i64>) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO trash_timers (item_id, file_index, trash_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(item_id, file_index) DO UPDATE SET trash_at = excluded.trash_at",
+        params![item_id, file_index, trash_at],
+    )?;
+    Ok(())
+}
+
+pub fn clear_timer(conn: &Connection, item_id: i64, file_index: i64) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM trash_timers WHERE item_id = ?1 AND file_index = ?2", params![item_id, file_index])?;
+    Ok(())
+}
+
+pub fn delete_video(conn: &Connection, item_id: i64, file_index: i64) -> rusqlite::Result<()> {
+    for table in ["videos", "playback", "trash_timers", "subtitles"] {
+        conn.execute(&format!("DELETE FROM {table} WHERE item_id = ?1 AND file_index = ?2"), params![item_id, file_index])?;
+    }
+    Ok(())
+}
+
+const BACKLOG: &str = "FROM playback p JOIN videos v ON v.item_id = p.item_id AND v.file_index = p.file_index
+     WHERE p.watched AND p.watched_at IS NULL
+       AND NOT EXISTS (SELECT 1 FROM trash_timers t WHERE t.item_id = p.item_id AND t.file_index = p.file_index)";
+
+pub fn backlog(conn: &Connection) -> rusqlite::Result<(u32, u64)> {
+    conn.query_row(&format!("SELECT COUNT(*), COALESCE(SUM(v.len), 0) {BACKLOG}"), [], |r| {
+        Ok((r.get(0)?, r.get::<_, i64>(1)? as u64))
+    })
+}
+
+pub fn schedule_backlog(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute(
+        &format!(
+            "UPDATE playback SET watched_at = unixepoch() WHERE (item_id, file_index) IN (SELECT p.item_id, p.file_index {BACKLOG})"
+        ),
+        [],
     )?;
     Ok(())
 }
@@ -604,6 +704,68 @@ mod tests {
             season: Some(1),
             episode: Some(episode),
         }
+    }
+
+    fn rule(after_watching: &str) -> Rule {
+        Rule { after_watching: after_watching.into(), days: 3 }
+    }
+
+    #[test]
+    fn when_a_video_goes_to_the_trash() {
+        let watched = Video { watched: true, watched_at: Some(1000), ..Default::default() };
+        assert_eq!(trash_at(&watched, &rule("keep")), None);
+        assert_eq!(trash_at(&watched, &rule("now")), Some(1000));
+        assert_eq!(trash_at(&watched, &rule("countdown")), Some(1000 + 3 * 86_400));
+        let old = Video { watched: true, watched_at: None, ..Default::default() };
+        assert_eq!(trash_at(&old, &rule("now")), None);
+        let unwatched = Video::default();
+        assert_eq!(trash_at(&unwatched, &rule("now")), None);
+        let timed = Video { timer: Some(Some(50)), ..Default::default() };
+        assert_eq!(trash_at(&timed, &rule("keep")), Some(50));
+        let kept = Video { timer: Some(None), ..watched };
+        assert_eq!(trash_at(&kept, &rule("now")), None);
+    }
+
+    #[test]
+    fn watching_stamps_the_time_and_the_backlog_waits_to_be_asked() {
+        let (conn, path) = temp_db("trash");
+        insert(&conn, &new_item("tt")).unwrap();
+        let id = list(&conn).unwrap()[0].id;
+        save_videos(&conn, id, &[episode(0, 1), episode(1, 2), episode(2, 3)], 0).unwrap();
+        conn.execute("INSERT INTO playback (item_id, file_index, watched) VALUES (?1, 0, 1)", params![id]).unwrap();
+        assert_eq!(backlog(&conn).unwrap(), (1, 1000));
+
+        set_watched(&conn, id, 1, true).unwrap();
+        let videos = videos_for(&conn, id).unwrap();
+        assert_eq!(videos[0].watched_at, None);
+        assert!(videos[1].watched_at.is_some());
+        set_watched(&conn, id, 1, false).unwrap();
+        assert_eq!(videos_for(&conn, id).unwrap()[1].watched_at, None);
+
+        schedule_backlog(&conn).unwrap();
+        assert_eq!(backlog(&conn).unwrap(), (0, 0));
+        assert!(videos_for(&conn, id).unwrap()[0].watched_at.is_some());
+
+        set_timer(&conn, id, 2, Some(99)).unwrap();
+        assert_eq!(videos_for(&conn, id).unwrap()[2].timer, Some(Some(99)));
+        set_timer(&conn, id, 2, None).unwrap();
+        assert_eq!(videos_for(&conn, id).unwrap()[2].timer, Some(None));
+        clear_timer(&conn, id, 2).unwrap();
+        assert_eq!(videos_for(&conn, id).unwrap()[2].timer, None);
+
+        delete_video(&conn, id, 2).unwrap();
+        assert_eq!(videos_for(&conn, id).unwrap().len(), 2);
+        assert_eq!(all_videos(&conn).unwrap().len(), 2);
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn the_rule_is_kept_in_settings() {
+        let (conn, path) = temp_db("rule");
+        assert_eq!(get_rule(&conn).unwrap(), rule("keep"));
+        set_rule(&conn, &Rule { after_watching: "countdown".into(), days: 7 }).unwrap();
+        assert_eq!(get_rule(&conn).unwrap(), Rule { after_watching: "countdown".into(), days: 7 });
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]
