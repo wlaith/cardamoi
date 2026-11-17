@@ -46,6 +46,8 @@ export interface CatalogTitle {
   rating: number | null;
 }
 
+export type Saved = Pick<CatalogTitle, "id" | "kind" | "title" | "year" | "poster">;
+
 export interface TmdbStatus {
   state: "missing" | "ok" | "rejected";
   kind: "token" | "key" | null;
@@ -305,6 +307,9 @@ export const api = {
   downloadSubtitle: (id: number, fileIndex: number, found: FoundSubtitle) =>
     invoke<Subtitle>("download_subtitle", { id, fileIndex, found }),
   reveal: (id: number) => invoke<void>("reveal", { id }),
+  watchlist: () => invoke<Saved[]>("watchlist"),
+  saveToWatchlist: (title: Saved) => invoke<void>("save_to_watchlist", { title }),
+  removeFromWatchlist: (id: number, kind: Kind) => invoke<void>("remove_from_watchlist", { id, kind }),
   trashRule: () => invoke<TrashRule>("trash_rule"),
   saveTrashRule: (rule: TrashRule) => invoke<void>("save_trash_rule", { rule }),
   trashBacklog: () => invoke<{ count: number; bytes: number }>("trash_backlog"),

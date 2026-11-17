@@ -974,6 +974,21 @@ struct Backlog {
 }
 
 #[tauri::command]
+fn watchlist(state: State<'_, AppState>) -> CmdResult<Vec<db::Saved>> {
+    db::list_saved(&state.db.lock().unwrap()).map_err(err)
+}
+
+#[tauri::command]
+fn save_to_watchlist(state: State<'_, AppState>, title: db::Saved) -> CmdResult<()> {
+    db::save(&state.db.lock().unwrap(), &title).map_err(err)
+}
+
+#[tauri::command]
+fn remove_from_watchlist(state: State<'_, AppState>, id: i64, kind: String) -> CmdResult<()> {
+    db::unsave(&state.db.lock().unwrap(), id, &kind).map_err(err)
+}
+
+#[tauri::command]
 fn trash_rule(state: State<'_, AppState>) -> CmdResult<db::Rule> {
     db::get_rule(&state.db.lock().unwrap()).map_err(err)
 }
@@ -1608,7 +1623,8 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .item(&item("go-upnext", "Up Next", Some("CmdOrCtrl+Alt+Digit1"))?)
         .item(&item("go-films", "Films", Some("CmdOrCtrl+Alt+Digit2"))?)
         .item(&item("go-shows", "TV Shows", Some("CmdOrCtrl+Alt+Digit3"))?)
-        .item(&item("go-downloads", "Downloads", Some("CmdOrCtrl+Alt+Digit4"))?)
+        .item(&item("go-watchlist", "Watchlist", Some("CmdOrCtrl+Alt+Digit4"))?)
+        .item(&item("go-downloads", "Downloads", Some("CmdOrCtrl+Alt+Digit5"))?)
         .separator()
         .item(&item("back", "Back", Some("CmdOrCtrl+BracketLeft"))?)
         .item(&item("forward", "Forward", Some("CmdOrCtrl+BracketRight"))?)
@@ -1667,6 +1683,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             search,
+            watchlist,
+            save_to_watchlist,
+            remove_from_watchlist,
             trash_rule,
             save_trash_rule,
             trash_backlog,

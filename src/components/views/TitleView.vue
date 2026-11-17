@@ -17,6 +17,7 @@ import { go } from "../../nav";
 import { entries, selection } from "../../store";
 import { canRetry, filmLine, resolvingText } from "../../status";
 import { isTmdbKeyError, noteTmdbError } from "../../tmdb";
+import { isSaved, save, unsave } from "../../watchlist";
 import { openMenuBelow } from "../../ui";
 import EpisodeDetails from "../EpisodeDetails.vue";
 import EpisodeTable, { type EpisodeRowData } from "../EpisodeTable.vue";
@@ -145,6 +146,14 @@ const meta = computed(() => {
   return parts.join(" · ");
 });
 
+const saveable = computed(() => mine.value.length === 0);
+const onWatchlist = computed(() => isSaved(props.title));
+
+function toggleSaved() {
+  if (onWatchlist.value) unsave(shown.value);
+  else save(shown.value);
+}
+
 const more = ref<HTMLElement>();
 
 function moreMenu() {
@@ -203,6 +212,9 @@ watch(
             <button v-if="show" ref="more" class="btn-icon size-12" aria-label="More" aria-haspopup="menu" @click="moreMenu">
               <Icon name="overflow" />
             </button>
+            <button v-if="saveable" class="btn btn-ghost btn-lg" @click="toggleSaved">
+              {{ onWatchlist ? "On watchlist" : "Save to watchlist" }} <Icon :name="onWatchlist ? 'checkmark' : 'bookmark'" />
+            </button>
             <p v-if="next?.video.resumeAt != null" class="w-full text-ink-2">{{ timeLeft(next.video) }}</p>
           </div>
 
@@ -230,6 +242,12 @@ watch(
               <p class="mt-2 text-ink-2">{{ filmLine(filmEntry).text }}</p>
             </div>
           </template>
+
+          <div v-else-if="saveable" class="pt-2">
+            <button class="btn btn-ghost btn-lg -ml-2" @click="toggleSaved">
+              {{ onWatchlist ? "On watchlist" : "Save to watchlist" }} <Icon :name="onWatchlist ? 'checkmark' : 'bookmark'" />
+            </button>
+          </div>
 
           <ul v-if="show?.pending.length" class="max-w-xl space-y-2">
             <li v-for="p in show.pending" :key="p.id" class="notification" :class="{ 'notification-error': p.status === 'error' }">

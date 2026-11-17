@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  Bookmark,
   Captions,
   Check,
   ChevronDown,
@@ -51,6 +52,7 @@ export const icons = {
   add: Plus,
   "arrow-left": ArrowLeft,
   "arrow-right": ArrowRight,
+  bookmark: Bookmark,
   checkmark: Check,
   "checkmark-filled": CircleCheck,
   "chevron-down": ChevronDown,
