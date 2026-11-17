@@ -12,8 +12,24 @@ export const shelf = computed(() => groupLibrary(entries.value));
 
 const leaving = new Set<number>();
 let lastJson = "";
+let running: Promise<void> | null = null;
+let again = false;
 
-export async function refresh() {
+export function refresh(): Promise<void> {
+  if (running) {
+    again = true;
+    return running;
+  }
+  running = (async () => {
+    do {
+      again = false;
+      await read();
+    } while (again);
+  })().finally(() => (running = null));
+  return running;
+}
+
+async function read() {
   try {
     const all = await api.library();
     const next = leaving.size ? all.filter((e) => !leaving.has(e.id)) : all;
@@ -188,19 +204,23 @@ export function startSync(): () => void {
   let stopped = false;
   const tick = async () => {
     if (document.visibilityState !== "hidden") await refresh();
+    window.clearTimeout(timer);
     if (!stopped) timer = window.setTimeout(tick, refreshDelay(entries.value, playing.value));
   };
+  const kick = () => {
+    window.clearTimeout(timer);
+    tick();
+  };
   tick();
-  const stopChanges = onLibraryChange(refresh);
-  // Positions are saved as a video plays; read them once it ends rather than at the next slow tick.
-  const stopEnded = watch(playing, (on) => on || refresh());
-  window.addEventListener("focus", refresh);
+  const stopChanges = onLibraryChange(kick);
+  const stopEnded = watch(playing, (on) => on || kick());
+  window.addEventListener("focus", kick);
   api.playerState().then((p) => (player.value = p), () => {});
   const unlisten = listen<PlayerState>("player://state", (event) => (player.value = event.payload));
   window.addEventListener("beforeunload", dismissNotice);
   return () => {
     window.removeEventListener("beforeunload", dismissNotice);
-    window.removeEventListener("focus", refresh);
+    window.removeEventListener("focus", kick);
     stopped = true;
     window.clearTimeout(timer);
     stopChanges();
