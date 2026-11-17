@@ -17,7 +17,8 @@ export type Sheet =
       resolve: (value: string | null) => void;
     }
   | { kind: "info"; ep: LocalEpisode }
-  | { kind: "magnet"; link: string };
+  | { kind: "magnet"; link: string }
+  | { kind: "trashTimer"; title: string; name: string; videos: LocalEpisode[] };
 
 export const sheet = ref<Sheet | null>(null);
 

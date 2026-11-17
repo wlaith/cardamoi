@@ -734,9 +734,10 @@ struct VideoEntry {
     playable: bool,
     ready_in_secs: Option<u64>,
     resume_at: Option<f64>,
+    trash_at: Option<i64>,
 }
 
-fn video_entry(video: db::Video, file_progress: &[u64], speed_mibps: f64) -> VideoEntry {
+fn video_entry(video: db::Video, file_progress: &[u64], speed_mibps: f64, rule: &db::Rule) -> VideoEntry {
     let have = file_progress.get(video.file_index as usize).copied().unwrap_or(0);
     let missing = player::buffer_target(video.len).saturating_sub(have);
     let ready_in_secs =
@@ -746,11 +747,12 @@ fn video_entry(video: db::Video, file_progress: &[u64], speed_mibps: f64) -> Vid
         playable: video.len > 0 && (have >= video.len || missing == 0),
         ready_in_secs,
         resume_at: player::resume_from(video.position_secs, video.duration_secs),
+        trash_at: db::trash_at(&video, rule),
         video,
     }
 }
 
-fn local_entry(state: &AppState, item: db::Item) -> LibraryEntry {
+fn local_entry(state: &AppState, item: db::Item, rule: &db::Rule) -> LibraryEntry {
     let videos = db::videos_for(&state.db.lock().unwrap(), item.id).unwrap_or_default();
     let progress = Files::of(state, &item).map(|f| f.progress(&videos)).unwrap_or_default();
     let on_disk: u64 = progress.iter().sum();
@@ -763,7 +765,7 @@ fn local_entry(state: &AppState, item: db::Item) -> LibraryEntry {
         eta: None,
         error: (on_disk == 0).then(|| "The file is no longer in the folder.".into()),
         resolving_secs: None,
-        videos: videos.into_iter().map(|v| video_entry(v, &progress, 0.0)).collect(),
+        videos: videos.into_iter().map(|v| video_entry(v, &progress, 0.0, rule)).collect(),
         item,
     }
 }
@@ -775,12 +777,15 @@ fn find_torrent(session: &Session, info_hash: &str) -> Option<Arc<ManagedTorrent
 
 #[tauri::command]
 fn library(state: State<'_, AppState>) -> CmdResult<Vec<LibraryEntry>> {
-    let items = db::list(&state.db.lock().unwrap()).map_err(err)?;
+    let (items, rule) = {
+        let db = state.db.lock().unwrap();
+        (db::list(&db).map_err(err)?, db::get_rule(&db).map_err(err)?)
+    };
     Ok(items
         .into_iter()
         .map(|mut item| {
             if item.local_path.is_some() {
-                return local_entry(&state, item);
+                return local_entry(&state, item, &rule);
             }
             let Some(handle) = find_torrent(&state.session, &item.info_hash) else {
                 let videos = db::videos_for(&state.db.lock().unwrap(), item.id).unwrap_or_default();
@@ -801,7 +806,7 @@ fn library(state: State<'_, AppState>) -> CmdResult<Vec<LibraryEntry>> {
                     eta: None,
                     error,
                     resolving_secs,
-                    videos: videos.into_iter().map(|v| video_entry(v, &[], 0.0)).collect(),
+                    videos: videos.into_iter().map(|v| video_entry(v, &[], 0.0, &rule)).collect(),
                 };
             };
             if item.title.is_empty() {
@@ -830,7 +835,7 @@ fn library(state: State<'_, AppState>) -> CmdResult<Vec<LibraryEntry>> {
                 speed_mibps: speed,
                 eta: stats.live.as_ref().and_then(|l| l.time_remaining.as_ref()).map(|t| t.to_string()),
                 resolving_secs: None,
-                videos: videos.into_iter().map(|v| video_entry(v, &stats.file_progress, speed)).collect(),
+                videos: videos.into_iter().map(|v| video_entry(v, &stats.file_progress, speed, &rule)).collect(),
                 error: stats.error,
                 item,
             }
@@ -867,12 +872,16 @@ fn move_to_trash(path: &Path) -> CmdResult<()> {
 
 #[tauri::command]
 async fn remove(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    remove_item(&state, id).await
+}
+
+async fn remove_item(state: &AppState, id: i64) -> CmdResult<()> {
     if let Some(resolving) = state.resolving.lock().unwrap().remove(&id) {
         if let Some(task) = resolving.task {
             task.abort();
         }
     }
-    let (item, handle) = torrent_for_item(&state, id).map_err(err)?;
+    let (item, handle) = torrent_for_item(state, id).map_err(err)?;
     if let Some(path) = &item.local_path {
         let subs = db::list_subtitles(&state.db.lock().unwrap(), id, 0).map_err(err)?;
         for sub in subs.iter().filter(|s| s.source != "torrent") {
@@ -898,6 +907,110 @@ async fn remove(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
         }
     }
     db::delete(&state.db.lock().unwrap(), id).map_err(err)
+}
+
+async fn trash_video(state: &AppState, item_id: i64, file_index: i64) -> CmdResult<()> {
+    let videos = db::videos_for(&state.db.lock().unwrap(), item_id).map_err(err)?;
+    if videos.len() <= 1 {
+        return remove_item(state, item_id).await;
+    }
+    let Some(video) = videos.iter().find(|v| v.file_index == file_index) else { return Ok(()) };
+    let (_, handle) = torrent_for_item(state, item_id).map_err(err)?;
+    if let Some(handle) = handle {
+        let keep: HashSet<usize> = torrent_files(&handle)
+            .map_err(err)?
+            .into_iter()
+            .map(|(i, _, _)| i)
+            .filter(|&i| i as i64 != file_index)
+            .collect();
+        state.session.update_only_files(&handle, &keep).await.map_err(err)?;
+        move_to_trash(&handle.output_folder().join(&video.path))?;
+    }
+    let subs = db::list_subtitles(&state.db.lock().unwrap(), item_id, file_index).map_err(err)?;
+    for sub in subs.iter().filter(|s| s.source != "torrent") {
+        move_to_trash(Path::new(&sub.path))?;
+    }
+    db::delete_video(&state.db.lock().unwrap(), item_id, file_index).map_err(err)
+}
+
+fn unix_now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
+}
+
+async fn trash_due(app: AppHandle) {
+    loop {
+        let state = app.state::<AppState>();
+        let open = state
+            .player
+            .state()
+            .filter(|p| !matches!(p.status, "stopped" | "failed" | "crashed"))
+            .map(|p| (p.item_id, p.file_index));
+        let due: Vec<(i64, i64)> = {
+            let db = state.db.lock().unwrap();
+            let rule = db::get_rule(&db).unwrap_or_else(|_| db::Rule { after_watching: "keep".into(), days: 3 });
+            let now = unix_now();
+            db::all_videos(&db)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|v| db::trash_at(v, &rule).is_some_and(|at| at <= now))
+                .map(|v| (v.item_id, v.file_index))
+                .filter(|&video| Some(video) != open)
+                .collect()
+        };
+        for (item_id, file_index) in due {
+            // A failure is tried again next time round.
+            if let Err(e) = trash_video(&state, item_id, file_index).await {
+                eprintln!("auto-trash: {e}");
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(60)).await;
+    }
+}
+
+#[derive(Serialize)]
+struct Backlog {
+    count: u32,
+    bytes: u64,
+}
+
+#[tauri::command]
+fn trash_rule(state: State<'_, AppState>) -> CmdResult<db::Rule> {
+    db::get_rule(&state.db.lock().unwrap()).map_err(err)
+}
+
+#[tauri::command]
+fn save_trash_rule(state: State<'_, AppState>, rule: db::Rule) -> CmdResult<()> {
+    db::set_rule(&state.db.lock().unwrap(), &rule).map_err(err)
+}
+
+#[tauri::command]
+fn trash_backlog(state: State<'_, AppState>) -> CmdResult<Backlog> {
+    let (count, bytes) = db::backlog(&state.db.lock().unwrap()).map_err(err)?;
+    Ok(Backlog { count, bytes })
+}
+
+#[tauri::command]
+fn schedule_backlog(state: State<'_, AppState>) -> CmdResult<()> {
+    db::schedule_backlog(&state.db.lock().unwrap()).map_err(err)
+}
+
+/// `at` is a Unix time, or nothing to keep the videos whatever the rule says.
+#[tauri::command]
+fn set_trash_timer(state: State<'_, AppState>, targets: Vec<(i64, i64)>, at: Option<i64>) -> CmdResult<()> {
+    let db = state.db.lock().unwrap();
+    for (item_id, file_index) in targets {
+        db::set_timer(&db, item_id, file_index, at).map_err(err)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_trash_timer(state: State<'_, AppState>, targets: Vec<(i64, i64)>) -> CmdResult<()> {
+    let db = state.db.lock().unwrap();
+    for (item_id, file_index) in targets {
+        db::clear_timer(&db, item_id, file_index).map_err(err)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1545,6 +1658,7 @@ pub fn run() {
             resume_resolving(app.handle());
             tauri::async_runtime::spawn(identify_unmatched(app.handle().clone()));
             tauri::async_runtime::spawn(watch_folder(app.handle().clone()));
+            tauri::async_runtime::spawn(trash_due(app.handle().clone()));
             app.set_menu(build_menu(app.handle())?)?;
             app.on_menu_event(|app, event| {
                 let _ = app.emit("menu", event.id().0.as_str());
@@ -1553,6 +1667,12 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             search,
+            trash_rule,
+            save_trash_rule,
+            trash_backlog,
+            schedule_backlog,
+            set_trash_timer,
+            clear_trash_timer,
             catalog_search,
             match_name,
             title_details,

@@ -4,7 +4,7 @@ import { play, videoMenu } from "../commands";
 import { arrowNav } from "../keys";
 import { playedShare, type LocalEpisode } from "../library";
 import { selection } from "../store";
-import { percent } from "../status";
+import { percent, trashIn } from "../status";
 import { openMenu, openMenuBelow } from "../ui";
 import Icon from "./ui/Icon.vue";
 import ProgressBar from "./ui/ProgressBar.vue";
@@ -97,6 +97,9 @@ function synopsis(row: EpisodeRowData) {
                 Find release <Icon name="search" />
               </button>
             </template>
+            <span v-else-if="row.local.video.trashAt != null" class="flex items-center gap-2 tabular-nums">
+              <Icon name="recently-viewed" /> {{ trashIn(row.local.video.trashAt) }}
+            </span>
             <span v-else-if="row.local.video.watched" class="flex items-center gap-2"><Icon name="checkmark" /> Watched</span>
             <span v-else-if="row.local.video.resumeAt != null" class="flex items-center gap-3">
               <ProgressBar class="w-12" thin :value="playedShare(row.local.video)" :label="`Episode ${row.number} watched`" />

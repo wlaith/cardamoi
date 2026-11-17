@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
-import { api } from "../../api";
+import { api, formatBytes, type TrashRule } from "../../api";
 import { checkFolder, openFolder } from "../../commands";
 import { theme, type Theme } from "../../store";
 import {
@@ -31,6 +31,49 @@ function onThemeKey(event: KeyboardEvent) {
   const at = themes.findIndex((t) => t.id === theme.value);
   theme.value = themes[(at + step + themes.length) % themes.length].id;
   (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+}
+
+const afterWatching: { id: TrashRule["afterWatching"]; label: string; icon: "checkmark" | "trash" | "recently-viewed" }[] = [
+  { id: "keep", label: "Keep it", icon: "checkmark" },
+  { id: "now", label: "Trash right away", icon: "trash" },
+  { id: "countdown", label: "Trash after a countdown", icon: "recently-viewed" },
+];
+const rule = ref<TrashRule | null>(null);
+const backlog = ref<{ count: number; bytes: number } | null>(null);
+const ruleError = ref<unknown>(null);
+
+async function saveRule() {
+  try {
+    await api.saveTrashRule(rule.value!);
+    ruleError.value = null;
+  } catch (e) {
+    ruleError.value = e;
+  }
+}
+
+async function chooseRule(id: TrashRule["afterWatching"]) {
+  const wasKeep = rule.value!.afterWatching === "keep";
+  rule.value!.afterWatching = id;
+  await saveRule();
+  backlog.value = null;
+  if (wasKeep && id !== "keep") {
+    const found = await api.trashBacklog().catch(() => null);
+    if (found?.count) backlog.value = found;
+  }
+}
+
+function stepDays(by: number) {
+  rule.value!.days = Math.min(365, Math.max(1, rule.value!.days + by));
+  saveRule();
+}
+
+async function trashBacklog() {
+  backlog.value = null;
+  try {
+    await api.scheduleBacklog();
+  } catch (e) {
+    ruleError.value = e;
+  }
 }
 
 const autoplayNext = ref<boolean | null>(null);
@@ -65,6 +108,7 @@ onUnmounted(() => window.removeEventListener("focus", checkMagnet));
 onMounted(async () => {
   window.addEventListener("focus", checkMagnet);
   checkMagnet();
+  api.trashRule().then((r) => (rule.value = r), (e) => (ruleError.value = e));
   try {
     const settings = await api.playbackSettings();
     autoplayNext.value = settings.autoplayNext;
@@ -178,6 +222,45 @@ async function save(changed: "autoplayNext" | "ownMpv") {
       <ErrorNote v-if="checkState === 'failed'" :error="`Couldn't check for updates: ${checkError}`" />
     </section>
 
+    <section class="space-y-21" aria-labelledby="storage-heading">
+      <SectionHeader id="storage-heading" title="Storage" subtitle="Media in the Trash uses disk space until you empty it." />
+      <div v-if="rule" class="space-y-13">
+        <p id="after-watching" class="font-semibold">After I finish something</p>
+        <div class="flex flex-wrap gap-2" role="group" aria-labelledby="after-watching">
+          <button
+            v-for="a in afterWatching"
+            :key="a.id"
+            class="rule-choice"
+            :aria-pressed="rule.afterWatching === a.id"
+            @click="chooseRule(a.id)"
+          >
+            <Icon :name="a.icon" /> {{ a.label }}
+          </button>
+        </div>
+        <div v-if="rule.afterWatching === 'countdown'" class="flex items-center gap-2">
+          <div class="stepper tabular-nums" role="group" aria-label="Days">
+            <button class="btn-icon" aria-label="Fewer days" @click="stepDays(-1)"><Icon name="subtract" /></button>
+            <span>{{ rule.days }} {{ rule.days === 1 ? "day" : "days" }}</span>
+            <button class="btn-icon" aria-label="More days" @click="stepDays(1)"><Icon name="add" /></button>
+          </div>
+          <span class="text-ink-2">after I finish it</span>
+        </div>
+        <div v-if="backlog" class="space-y-13 border border-line bg-background p-21" role="group" aria-labelledby="backlog-title">
+          <div>
+            <p id="backlog-title" class="font-semibold">
+              Also trash the <span class="tabular-nums">{{ backlog.count }}</span> you've already finished?
+            </p>
+            <p class="text-ink-2">They take <span class="tabular-nums">{{ formatBytes(backlog.bytes) }}</span>.</p>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-primary" @click="trashBacklog">Trash them too <Icon name="trash" /></button>
+            <button class="btn btn-secondary" @click="backlog = null">Only new ones</button>
+          </div>
+        </div>
+      </div>
+      <ErrorNote v-if="ruleError" :error="ruleError" />
+    </section>
+
     <section class="space-y-21" aria-labelledby="playback-heading">
       <SectionHeader id="playback-heading" title="Playback" />
       <label v-if="autoplayNext != null" class="flex items-start gap-4">
@@ -225,6 +308,23 @@ async function save(changed: "autoplayNext" | "ownMpv") {
   font-weight: 600;
   border-color: var(--c-ink);
   box-shadow: inset 0 0 0 1px var(--c-ink);
+}
+.rule-choice {
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 13px;
+  border: 1px solid var(--c-line);
+  color: var(--c-ink-muted);
+}
+.rule-choice:hover {
+  color: var(--c-ink);
+}
+.rule-choice[aria-pressed="true"] {
+  color: var(--c-surface);
+  background: var(--c-ink);
+  border-color: var(--c-ink);
 }
 .theme-swatch {
   display: grid;
