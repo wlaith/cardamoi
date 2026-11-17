@@ -1,6 +1,6 @@
 [package]
 name = "cardamoi"
-version = "0.1.0"
+version = "0.2.0"
 description = "Search, download and watch a local media library"
 authors = ["Laith Alwazani"]
 edition = "2024"
