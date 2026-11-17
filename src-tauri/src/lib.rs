@@ -1660,6 +1660,8 @@ pub fn run() {
         .setup(|app| {
             let state = init_state(app.handle())?;
             app.manage(state);
+            #[cfg(unix)]
+            player::remove_stale_sockets(&app.path().app_data_dir()?);
             // The built-in player's video view; without it playback falls back to mpv's own window.
             if let Some(window) = app.get_webview_window("main") {
                 match surface::Surface::attach(&window) {

@@ -577,6 +577,18 @@ fn ipc_path(data_dir: &Path) -> PathBuf {
     data_dir.join(format!("mpv-{}.sock", &uuid::Uuid::new_v4().simple().to_string()[..8]))
 }
 
+#[cfg(unix)]
+pub fn remove_stale_sockets(data_dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(data_dir) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("mpv-") && name.ends_with(".sock") {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 #[cfg(windows)]
 fn ipc_path(_data_dir: &Path) -> PathBuf {
     PathBuf::from(format!(r"\\.\pipe\cardamoi-mpv-{}", uuid::Uuid::new_v4().simple()))
@@ -1032,6 +1044,21 @@ async fn send<W: AsyncWrite + Unpin>(write: &mut W, msg: &Value) -> std::io::Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn removes_only_leftover_sockets() {
+        let dir = std::env::temp_dir().join(format!("cardamoi-sockets-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["mpv-0dcf3ef7.sock", "mpv-ad93fb30.sock", "mpv-input.conf", "library.db"] {
+            std::fs::write(dir.join(name), b"").unwrap();
+        }
+        remove_stale_sockets(&dir);
+        let mut left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        left.sort();
+        assert_eq!(left, ["library.db", "mpv-input.conf"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn resumes_between_the_start_and_the_credits() {
