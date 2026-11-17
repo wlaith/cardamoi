@@ -175,6 +175,8 @@ impl Surface {
                 let made: *mut AnyObject = msg_send![made, initWithFrame: frame];
                 let layer: *mut AnyObject = msg_send![layer_class(), new];
                 let window: *mut AnyObject = msg_send![web, window];
+                let no: *mut AnyObject = msg_send![objc2::class!(NSNumber), numberWithBool: Bool::NO];
+                let _: () = msg_send![web, setValue: no, forKey: &*objc2_foundation::ns_string!("drawsBackground")];
                 let scale: f64 = msg_send![window, backingScaleFactor];
                 let _: () = msg_send![layer, setContentsScale: scale];
                 let _: () = msg_send![layer, setAsynchronous: Bool::YES];
