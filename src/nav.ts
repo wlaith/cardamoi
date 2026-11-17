@@ -16,7 +16,7 @@ export type Route =
   | { name: "help"; topic?: string }
   | { name: "setup"; step?: SetupStep };
 
-export type SetupStep = "welcome" | "get" | "paste" | "done";
+export type SetupStep = "welcome" | "get" | "paste" | "indexers" | "subtitles" | "done";
 
 export type Section = "upnext" | "films" | "shows" | "watchlist" | "downloads" | "search" | "preferences" | "help" | "setup";
 
