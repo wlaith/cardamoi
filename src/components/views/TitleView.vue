@@ -1,7 +1,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { api, episodeLabel, formatBytes, timeLeft, type CatalogTitle, type Details, type Episode } from "../../api";
-import { moveToTrash, play, retry, setSeasonWatched, showMenu, subtitles, videoMenu } from "../../commands";
+import {
+  cancelTrashTimer,
+  moveToTrash,
+  play,
+  retry,
+  setSeasonWatched,
+  showMenu,
+  subtitles,
+  trashLater,
+  videoMenu,
+} from "../../commands";
 import { episodeKey, groupLibrary, nextEpisode, type LocalEpisode } from "../../library";
 import { go } from "../../nav";
 import { entries, selection } from "../../store";
@@ -64,6 +74,7 @@ const rows = computed<EpisodeRowData[]>(() =>
 );
 const openEpisode = computed(() => episodes.value.find((e) => String(e.number) === openRow.value) ?? null);
 const seasonLocal = computed(() => [...local.value.values()].filter((e) => e.video.season === season.value));
+const seasonTimed = computed(() => seasonLocal.value.some((e) => e.video.trashAt != null));
 const seasonAllWatched = computed(() => seasonLocal.value.length > 0 && seasonLocal.value.every((e) => e.video.watched));
 const missingInSeason = computed(
   () => episodes.value.filter((e) => !localOf(e.number) && (!e.airDate || e.airDate <= today)).length,
@@ -263,6 +274,12 @@ watch(
         <span v-if="seasonLocal.length" class="text-ink-2">{{ seasonWatched }} of {{ episodes.length || seasonLocal.length }} watched</span>
         <button v-if="seasonLocal.length" class="btn btn-ghost btn-sm" @click="markSeason">
           Mark season as {{ seasonAllWatched ? "unwatched" : "watched" }} <Icon name="checkmark" />
+        </button>
+        <button v-if="seasonLocal.length && seasonTimed" class="btn btn-ghost btn-sm" @click="cancelTrashTimer(seasonLocal)">
+          Cancel timer <Icon name="close" />
+        </button>
+        <button v-else-if="seasonLocal.length" class="btn btn-ghost btn-sm" @click="trashLater(seasonLocal, `Season ${season}`)">
+          Trash season later… <Icon name="recently-viewed" />
         </button>
       </div>
       <p v-if="!details.seasons.length" class="text-ink-2">TMDB doesn't list any seasons for this show yet.</p>

@@ -123,7 +123,15 @@ export interface VideoEntry {
   playable: boolean;
   readyInSecs: number | null;
   resumeAt: number | null;
+  trashAt: number | null;
 }
+
+export interface TrashRule {
+  afterWatching: "keep" | "now" | "countdown";
+  days: number;
+}
+
+export type VideoKey = [number, number];
 
 export interface Track {
   id: number;
@@ -297,6 +305,13 @@ export const api = {
   downloadSubtitle: (id: number, fileIndex: number, found: FoundSubtitle) =>
     invoke<Subtitle>("download_subtitle", { id, fileIndex, found }),
   reveal: (id: number) => invoke<void>("reveal", { id }),
+  trashRule: () => invoke<TrashRule>("trash_rule"),
+  saveTrashRule: (rule: TrashRule) => invoke<void>("save_trash_rule", { rule }),
+  trashBacklog: () => invoke<{ count: number; bytes: number }>("trash_backlog"),
+  scheduleBacklog: () => invoke<void>("schedule_backlog"),
+  /** `at` in Unix seconds, or null to keep them whatever the rule says. */
+  setTrashTimer: (targets: VideoKey[], at: number | null) => invoke<void>("set_trash_timer", { targets, at }),
+  clearTrashTimer: (targets: VideoKey[]) => invoke<void>("clear_trash_timer", { targets }),
 };
 
 export function errorMessage(e: unknown): string {
